@@ -140,6 +140,14 @@ table.data .actions { display: flex; gap: 4px; justify-content: flex-end; }
 .label-preview__item { background: var(--bg-elev); padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); }
 .label-preview__item svg { display: block; height: auto; max-width: 200px; }
 
+.diecut-preview__sheets { display: flex; flex-wrap: wrap; gap: 12px; }
+.diecut-preview .slot { position: absolute; overflow: hidden; }
+.diecut-preview .slot > svg { width: 100% !important; height: 100% !important; display: block; }
+.diecut-preview .cell-guide {
+  position: absolute; box-sizing: border-box;
+  border: 0.4mm dashed #888; pointer-events: none;
+}
+
 .queue { padding-left: 20px; font-family: ui-monospace, monospace; font-size: 13px; }
 .queue li { margin: 4px 0; }
 

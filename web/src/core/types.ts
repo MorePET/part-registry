@@ -73,6 +73,84 @@ export interface LayoutOptionField {
   step?: number;
 }
 
+// ---------- OutputMode ----------
+//
+// An output mode is a paper-aware page-layout strategy: it decides how
+// the flat list of (id, layout, copies) items from the Print tab gets
+// arranged into printable pages. The default is `dk-continuous` — one
+// page per label on continuous DK tape, printer auto-cuts between.
+// Other modes pack multiple labels onto a single die-cut sheet
+// (DK-1201), tile a strip with crop marks (#7), or fill an A4 sticker
+// sheet.
+//
+// Layout decides what *one label* looks like. OutputMode decides how
+// *N labels* lay out on paper. Adding a new paper format (or sheet
+// size, or cut-mark scheme) = new file in src/output/, register, done.
+//
+// The Print tab is kept dumb: it builds JobItem[] and delegates the
+// planning + print-HTML emission to the selected mode.
+
+export interface OutputModeField {
+  key: string;
+  label: string;
+  type: "number" | "select";
+  default: number | string;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: { value: string; label: string }[];
+  /** Optional inline help shown next to the field. */
+  hint?: string;
+}
+
+/**
+ * One physical page emitted by an OutputMode.
+ *
+ * `widthMm`/`heightMm` are the physical media dimensions (e.g. 29×90
+ * for a DK-1201 die-cut). `bodyHtml` is the HTML to drop inside the
+ * page's content `<div>` — already sized/positioned by the mode.
+ */
+export interface PlannedPage {
+  widthMm: number;
+  heightMm: number;
+  /** Inner content, mm-positioned. */
+  bodyHtml: string;
+  /** Optional: how many labels are on this page (for plan summaries). */
+  labelCount?: number;
+}
+
+export interface OutputMode {
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
+  /** Form fields the Print tab should expose for this mode. */
+  optionFields(): OutputModeField[];
+  /**
+   * Plan the job: take the JobItem-equivalent list of (id, layoutId,
+   * size, copies, extras) and the user's option values; return the
+   * physical pages.
+   *
+   * The mode is responsible for using the registered Layouts (via
+   * `getLayout`) to render label SVGs at the correct size.
+   */
+  plan(items: PlanItem[], opts: Record<string, number | string>): PlannedPage[];
+  /** Build the print-window HTML document for the planned pages. */
+  renderPrintHtml(pages: PlannedPage[]): string;
+}
+
+/**
+ * The OutputMode-facing view of a single Print tab row. Decoupled
+ * from the Print tab's internal `JobItem` so modes can be unit-tested
+ * without dragging in the tab.
+ */
+export interface PlanItem {
+  id: string;
+  layoutId: string;
+  size: number;
+  copies: number;
+  extras: Record<string, number>;
+}
+
 // ---------- Plugin ----------
 //
 // A plugin attaches to the running app — toolbar buttons, observers,

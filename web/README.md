@@ -15,7 +15,18 @@ Three extension points, each with a small interface in
 |---|---|---|
 | `Tab` | dropping a file in `src/tabs/` and registering | Lookup, Print, Bind |
 | `Layout` | dropping a file in `src/layouts/` and registering | vert, horz, flag |
+| `OutputMode` | dropping a file in `src/output/` and registering | dk-continuous, dk-1201-diecut |
 | `Plugin` | dropping a file in `src/plugins/` and registering | error report (more later) |
+
+**Layout vs OutputMode.** `Layout` decides what *one label* looks like
+(QR + 4/4/4 text arrangement at a given size). `OutputMode` decides
+how *N labels* lay out on paper — page-per-label on continuous DK
+tape, packed grid on a DK-1201 die-cut, strip-with-crop-marks (#7),
+A4 sticker sheet, etc. The Print tab builds `JobItem[]` and delegates
+both planning (item list → physical pages) and print-HTML emission to
+the active mode. Adding a new paper format = new file in
+`src/output/`, register, done — the Print tab UI auto-renders the
+mode's option fields.
 
 Single sources of truth:
 
