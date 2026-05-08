@@ -91,9 +91,10 @@ In the app:
 2. Tap the camera icon. The browser will ask for camera permission
    the first time — say yes. (Permission is per-origin, so you grant
    it once for `morepet.github.io`.)
-3. Hold the phone over the QR. The app uses `BarcodeDetector` where
-   available, falling back to `@zxing/browser`. Either way, the scan
-   is fast — within a second of the QR being in frame.
+3. Hold the phone over the QR. The app decodes QR and Micro QR via
+   a bundled WebAssembly build of ZXing-C++ (loaded once on the first
+   scan), so it works the same on every browser — within a second of
+   the QR being in frame.
 4. The detail page loads with the part's record.
 
 If the QR is damaged or out of camera range, **type the 12 characters**
