@@ -3,6 +3,63 @@
 Append-only chronological record of decisions for the parts registry.
 Newest entries first.
 
+## 2026-05-08 — Web app spike (architecture + Lookup/Print/Bind tabs + Error Report plugin)
+
+**Context:** ADR-013 specified the phase 2 web app deployment shape;
+user requested a working spike (`web/` directory in this repo) the
+same day to validate the architecture and start running labels through
+the print path.
+
+**Outcomes:** ADR-014 (web app architecture: extension interfaces,
+SSOT, plugin model), Status: Proposed. Working SPA at `web/` with
+Vite + TypeScript build, deployed to GitHub Pages via the
+`.github/workflows/pages.yml` action on every push to `main` that
+touches `web/**` or `registry.csv`.
+
+**Process notes:** the architecture commits to three small interfaces
+— `Tab`, `Layout`, `Plugin` — each with its own registry. Adding a
+new extension is one file + one registry line + zero core changes.
+This is an explicit invariant captured in ADR-014.
+
+Three SSOTs locked:
+
+1. `src/config.ts` — repo slug, registry URL, ID alphabet/length/regex,
+   QR border, tape sizes (`pt-N` for P-touch, `dk-N` for QL DK rolls),
+   default size.
+2. `src/registry/schema.ts` — registry row shape + field metadata
+   (`FIELDS` array with `label`, `editable`, `meaningfulFrom`).
+   Lookup detail view, Bind form, future validators all read from
+   here.
+3. `src/registry/registry.ts` — sole `Registry` interface; data layer
+   abstracts CSV-from-raw.githubusercontent.com today, will be
+   DuckDB-WASM later. Tabs depend on the interface, never on `fetch`.
+
+A drift risk was acknowledged and explicitly traded: the SVG layout
+renderers in `web/src/layouts/` are a TypeScript port of `label.py`.
+The proper SSOT (Pyodide-loaded `label.py` so FE and CLI run literally
+the same code) is the long-term direction per ADR-013 but was deferred
+for spike speed. The migration trigger is captured in ADR-014: any
+layout-change PR that requires editing both sides, or a roundtrip-test
+failure traced to FE-CLI divergence.
+
+The Error Report plugin demonstrates the plugin model end-to-end:
+`html2canvas-pro` snapshot → clipboard write → opens prefilled GitHub
+issue URL with environment and description, no OAuth token required.
+
+The Bind tab is fully scaffolded with a real localStorage queue but
+the GitHub-API submission path is stubbed — the user clicks "submit
+batch" and gets an alert showing the queued rows. Implementing the
+real OAuth device flow + REST API batch PR creation is a sub-task of
+issue #1.
+
+User added a follow-up: Lookup tab should also expose inline edit
+that funnels through the same bind-queue infrastructure (DRY — the
+queue knows about row diffs, doesn't care whether the diff originated
+in a bind or an edit). Filed as a sub-task of issue #1; ADR-014
+references it in Consequences.
+
+**References:** ADR-012, ADR-013, ADR-014, `web/`, issue #1.
+
 ## 2026-05-08 — Repository extracted from MorePET/exopet
 
 **Context:** ADR-012 (Part identification) and ADR-013 (Parts registry
