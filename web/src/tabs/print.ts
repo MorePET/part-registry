@@ -1,4 +1,4 @@
-// Print tab — job-composer (issue #11 MVP).
+// Print tab — job-composer (issue #11 MVP) + paper-format selector.
 //
 // A print job is a list of items, each item a tuple
 // `(id, layoutId, size, copies, extras)`. The user composes the list
@@ -9,16 +9,23 @@
 //   - hand-off from the Lookup tab's "Reprint" button (pre-fills one item)
 //
 // The plan persists in localStorage so the operator doesn't lose work
-// across reloads. Print iterates the full plan as one page-per-label
-// document so the printer auto-cuts between (the QL-820NWBc default).
+// across reloads. The selected output mode (paper format) decides how
+// the plan is turned into pages — see src/output/.
 //
-// Output modes other than "DK continuous + auto-cut" — A4 sheet,
-// strip-with-crop-marks, die-cut alignment — are explicit follow-ups
-// (#7, #11 stretch goals).
+// The default mode is `dk-continuous` (one page per label, printer
+// auto-cuts). The DK-1201 die-cut mode packs a configurable rows × cols
+// grid onto each 25 × 80 mm die-cut sheet.
 
 import { DEFAULT_SIZE_MM, TAPE_SIZES } from "../config";
-import type { AppContext, LayoutOptions, Tab } from "../core/types";
+import type {
+  AppContext,
+  OutputMode,
+  OutputModeField,
+  PlanItem,
+  Tab,
+} from "../core/types";
 import { allLayouts, getLayout } from "../layouts";
+import { allOutputModes, getOutputMode } from "../output";
 import {
   events,
   EVENT_REPRINT_REQUEST,
@@ -44,6 +51,9 @@ interface JobItem {
 }
 
 const PLAN_KEY = "part-registry.print-plan";
+const MODE_KEY = "part-registry.print-output-mode";
+const MODE_OPTS_KEY = "part-registry.print-output-mode-opts";
+const DEFAULT_MODE_ID = "dk-continuous";
 
 function loadPlan(): JobItem[] {
   try {
@@ -57,6 +67,47 @@ function loadPlan(): JobItem[] {
 
 function savePlan(plan: JobItem[]): void {
   localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
+}
+
+function loadModeId(): string {
+  return localStorage.getItem(MODE_KEY) || DEFAULT_MODE_ID;
+}
+
+function saveModeId(id: string): void {
+  localStorage.setItem(MODE_KEY, id);
+}
+
+type ModeOpts = Record<string, number | string>;
+
+function loadModeOpts(modeId: string): ModeOpts {
+  try {
+    const raw = localStorage.getItem(`${MODE_OPTS_KEY}:${modeId}`);
+    return raw ? (JSON.parse(raw) as ModeOpts) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveModeOpts(modeId: string, opts: ModeOpts): void {
+  localStorage.setItem(`${MODE_OPTS_KEY}:${modeId}`, JSON.stringify(opts));
+}
+
+function defaultsFor(mode: OutputMode): ModeOpts {
+  const out: ModeOpts = {};
+  for (const f of mode.optionFields()) {
+    out[f.key] = f.default;
+  }
+  return out;
+}
+
+function jobItemToPlanItem(item: JobItem): PlanItem {
+  return {
+    id: item.id,
+    layoutId: item.layoutId,
+    size: item.size,
+    copies: item.copies,
+    extras: { ...item.extras },
+  };
 }
 
 // Cross-tab handoff: Lookup's "Reprint" emits ReprintRequest.
@@ -83,7 +134,7 @@ function buildUI(ctx: AppContext): HTMLElement {
     el(
       "p",
       { class: "muted" },
-      "Compose a print job: add (ID × layout × size × copies) rows. The printer auto-cuts between pages on continuous DK tape.",
+      "Compose a print job: add (ID × layout × size × copies) rows. Pick a paper format below — DK continuous auto-cuts between labels; DK-1201 die-cut packs a grid onto each die-cut.",
     ),
   );
 
@@ -106,14 +157,139 @@ function buildUI(ctx: AppContext): HTMLElement {
   const summary = el("div", { class: "muted small" });
   const tableWrap = el("div");
   const previewArea = el("div", { class: "label-preview" });
+  const modeOptsArea = el("div", { class: "form-row" });
+  const planSummaryEl = el("div", { class: "muted small" });
+
+  // Output mode state.
+  let activeModeId = loadModeId();
+  if (!getOutputMode(activeModeId)) activeModeId = DEFAULT_MODE_ID;
+  let activeModeOpts: ModeOpts = {
+    ...defaultsFor(getOutputMode(activeModeId)!),
+    ...loadModeOpts(activeModeId),
+  };
+
+  const modeSel = select(
+    allOutputModes().map((m) => ({ value: m.id, label: m.label })),
+  );
+  modeSel.value = activeModeId;
+
+  const renderModeOpts = () => {
+    const mode = getOutputMode(activeModeId);
+    modeOptsArea.innerHTML = "";
+    if (!mode) return;
+    const fields = mode.optionFields();
+    if (fields.length === 0) {
+      modeOptsArea.append(
+        el("span", { class: "muted small" }, mode.description),
+      );
+      return;
+    }
+    for (const f of fields) {
+      modeOptsArea.append(buildModeOptField(f, activeModeOpts, () => {
+        saveModeOpts(activeModeId, activeModeOpts);
+        refreshPreview();
+        refreshPlanSummary();
+      }));
+    }
+  };
+
+  const refreshPlanSummary = () => {
+    const plan = loadPlan();
+    const mode = getOutputMode(activeModeId);
+    if (!mode) {
+      planSummaryEl.textContent = "";
+      return;
+    }
+    const planItems = plan.map(jobItemToPlanItem);
+    let pageCount = 0;
+    let labelCount = 0;
+    try {
+      const pages = mode.plan(planItems, activeModeOpts);
+      pageCount = pages.length;
+      labelCount = pages.reduce((acc, p) => acc + (p.labelCount ?? 1), 0);
+    } catch {
+      // Mode might throw on invalid opts — leave summary blank.
+    }
+    if (plan.length === 0) {
+      planSummaryEl.textContent = "";
+      return;
+    }
+    if (mode.id === "dk-1201-diecut") {
+      const rows = Math.max(1, Math.floor(toNum(activeModeOpts.rows, 2)));
+      const cols = Math.max(1, Math.floor(toNum(activeModeOpts.cols, 4)));
+      planSummaryEl.textContent =
+        `Output: ${pageCount} die-cut sheet(s) of ${rows}×${cols} (${labelCount} label(s) total).`;
+    } else {
+      planSummaryEl.textContent = `Output: ${pageCount} page(s).`;
+    }
+  };
+
+  const refreshPreview = () => {
+    previewArea.innerHTML = "";
+    const plan = loadPlan();
+    if (plan.length === 0) {
+      previewArea.append(el("p", { class: "muted" }, "Plan is empty."));
+      return;
+    }
+    const mode = getOutputMode(activeModeId);
+    if (!mode) return;
+    if (mode.id === "dk-1201-diecut") {
+      previewArea.append(buildDiecutPreview(plan, activeModeOpts));
+    } else {
+      // Continuous: show a sample of label SVGs (existing behavior).
+      const sample = plan.slice(0, 8);
+      for (const item of sample) {
+        const layout = getLayout(item.layoutId);
+        if (!layout) continue;
+        const wrap = el("div", { class: "label-preview__item" });
+        wrap.innerHTML = layout.renderSvg(item.id, {
+          size: item.size,
+          extra: { ...item.extras },
+        });
+        wrap.append(
+          el(
+            "div",
+            { class: "muted small" },
+            `${item.id} · ${item.layoutId} · ${item.size}mm × ${item.copies}`,
+          ),
+        );
+        previewArea.append(wrap);
+      }
+      if (plan.length > sample.length) {
+        previewArea.append(
+          el(
+            "div",
+            { class: "muted small" },
+            `… ${plan.length - sample.length} more (printed in full).`,
+          ),
+        );
+      }
+    }
+  };
+
+  modeSel.addEventListener("change", () => {
+    activeModeId = modeSel.value;
+    saveModeId(activeModeId);
+    const mode = getOutputMode(activeModeId);
+    if (!mode) return;
+    activeModeOpts = { ...defaultsFor(mode), ...loadModeOpts(activeModeId) };
+    renderModeOpts();
+    refreshPreview();
+    refreshPlanSummary();
+  });
 
   const renderPlan = () => {
     const plan = loadPlan();
     summary.textContent = planSummary(plan);
     tableWrap.innerHTML = "";
-    tableWrap.append(renderTable(ctx, plan, () => renderPlan()));
+    tableWrap.append(renderTable(ctx, plan, () => {
+      renderPlan();
+      refreshPlanSummary();
+    }));
+    refreshPlanSummary();
   };
   renderPlan();
+  renderModeOpts();
 
   // Bulk-add from a registry batch.
   const bulkBtn = button({}, icon("plus"), " Bulk add from batch…");
@@ -200,38 +376,7 @@ function buildUI(ctx: AppContext): HTMLElement {
   const previewBtn = button({}, icon("search"), " Preview");
   const printBtn = button({ class: "primary" }, icon("printer"), " Print");
 
-  previewBtn.addEventListener("click", () => {
-    previewArea.innerHTML = "";
-    const plan = loadPlan();
-    if (plan.length === 0) {
-      previewArea.append(el("p", { class: "muted" }, "Plan is empty."));
-      return;
-    }
-    const sample = plan.slice(0, 8);
-    for (const item of sample) {
-      const layout = getLayout(item.layoutId);
-      if (!layout) continue;
-      const wrap = el("div", { class: "label-preview__item" });
-      wrap.innerHTML = layout.renderSvg(item.id, jobItemToOpts(item));
-      wrap.append(
-        el(
-          "div",
-          { class: "muted small" },
-          `${item.id} · ${item.layoutId} · ${item.size}mm × ${item.copies}`,
-        ),
-      );
-      previewArea.append(wrap);
-    }
-    if (plan.length > sample.length) {
-      previewArea.append(
-        el(
-          "div",
-          { class: "muted small" },
-          `… ${plan.length - sample.length} more (printed in full).`,
-        ),
-      );
-    }
-  });
+  previewBtn.addEventListener("click", refreshPreview);
 
   printBtn.addEventListener("click", () => {
     const plan = loadPlan();
@@ -239,27 +384,158 @@ function buildUI(ctx: AppContext): HTMLElement {
       alert("Plan is empty.");
       return;
     }
-    openPrintWindow(plan);
+    const mode = getOutputMode(activeModeId);
+    if (!mode) {
+      alert("No output mode selected.");
+      return;
+    }
+    const pages = mode.plan(plan.map(jobItemToPlanItem), activeModeOpts);
+    if (pages.length === 0) {
+      alert("Nothing to print.");
+      return;
+    }
+    openPrintWindow(mode.renderPrintHtml(pages));
   });
 
   root.append(
     formRow([bulkBtn, clearBtn]),
     summary,
     tableWrap,
+    el("h3", {}, "Paper format"),
+    formRow([el("label", {}, "Output"), modeSel]),
+    modeOptsArea,
+    planSummaryEl,
     formRow([previewBtn, printBtn]),
     previewArea,
   );
   return root;
 }
 
+function buildModeOptField(
+  field: OutputModeField,
+  opts: ModeOpts,
+  onChange: () => void,
+): HTMLElement {
+  const wrap = el("label", { class: "form-row__inline" });
+  wrap.append(el("span", { class: "muted small" }, field.label));
+  if (field.type === "select") {
+    const sel = select(field.options ?? []);
+    sel.value = String(opts[field.key] ?? field.default);
+    sel.addEventListener("change", () => {
+      opts[field.key] = sel.value;
+      onChange();
+    });
+    wrap.append(sel);
+  } else {
+    const inp = numberInput({
+      value: Number(opts[field.key] ?? field.default),
+      min: field.min,
+      max: field.max,
+      step: field.step,
+    });
+    inp.addEventListener("change", () => {
+      const n = parseFloat(inp.value);
+      opts[field.key] = Number.isFinite(n) ? n : Number(field.default);
+      onChange();
+    });
+    wrap.append(inp);
+  }
+  if (field.hint) {
+    wrap.append(el("span", { class: "muted small" }, " " + field.hint));
+  }
+  return wrap;
+}
+
+function toNum(v: number | string | undefined, fallback: number): number {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const n = parseFloat(v);
+    if (!Number.isNaN(n)) return n;
+  }
+  return fallback;
+}
+
+// DK-1201 preview: render the 25×80 printable area at a fixed pixel
+// scale, with cells outlined and labels placed per the active opts.
+// Shows the *first* die-cut sheet only — the plan summary tells the
+// user how many sheets total.
+function buildDiecutPreview(
+  plan: JobItem[],
+  opts: ModeOpts,
+): HTMLElement {
+  const wrap = el("div", { class: "diecut-preview" });
+  const mode = getOutputMode("dk-1201-diecut");
+  if (!mode) return wrap;
+  const planItems = plan.map(jobItemToPlanItem);
+  const pages = mode.plan(planItems, opts);
+  if (pages.length === 0) {
+    wrap.append(el("p", { class: "muted" }, "Plan is empty."));
+    return wrap;
+  }
+
+  // Render all sheets (for multi-sheet preview), capped to 4 to keep
+  // the UI light. Each sheet is a 25 × 80 mm box scaled to ~3 px / mm.
+  const PX_PER_MM = 3;
+  const PRINTABLE_W = 25;
+  const PRINTABLE_H = 80;
+  const cap = 4;
+  const shown = pages.slice(0, cap);
+
+  const sheetsRow = el("div", { class: "diecut-preview__sheets" });
+  for (let i = 0; i < shown.length; i++) {
+    const p = shown[i];
+    const sheet = el("div", {
+      class: "diecut-preview__sheet",
+      style:
+        `position:relative;width:${PRINTABLE_W * PX_PER_MM}px;` +
+        `height:${PRINTABLE_H * PX_PER_MM}px;` +
+        `border:1px solid #888;background:#fff;` +
+        `margin-right:12px;` +
+        // Scale the mm-positioned children: the bodyHtml uses absolute
+        // mm coordinates; we set CSS so 1mm = PX_PER_MM px in this box.
+        `font-size:${PX_PER_MM}px;`,
+    });
+    // Rebuild the inner positioned content but with px instead of mm
+    // by wrapping in a transform-scaled div (simplest: use a child div
+    // that is 25mm × 80mm in CSS-mm and apply a transform).
+    const inner = el("div", {
+      style:
+        `position:absolute;left:0;top:0;` +
+        `width:${PRINTABLE_W}mm;height:${PRINTABLE_H}mm;` +
+        // Browsers compute mm relative to assumed 96 dpi → 1 mm ≈ 3.78 px.
+        // We want exactly PX_PER_MM. Use transform: scale.
+        `transform-origin:top left;transform:scale(${(PX_PER_MM / 3.7795275591).toFixed(6)});`,
+    });
+    inner.innerHTML = p.bodyHtml;
+    sheet.append(inner);
+    const label = el(
+      "div",
+      { class: "muted small", style: "text-align:center;margin-top:2px;" },
+      `Sheet ${i + 1}/${pages.length}`,
+    );
+    const col = el("div", {
+      style: "display:inline-block;vertical-align:top;margin-right:12px;",
+    });
+    col.append(sheet, label);
+    sheetsRow.append(col);
+  }
+  wrap.append(sheetsRow);
+  if (pages.length > cap) {
+    wrap.append(
+      el(
+        "div",
+        { class: "muted small" },
+        `… ${pages.length - cap} more sheet(s) (printed in full).`,
+      ),
+    );
+  }
+  return wrap;
+}
+
 function planSummary(plan: JobItem[]): string {
   const totalLabels = plan.reduce((acc, it) => acc + it.copies, 0);
   if (plan.length === 0) return "Plan is empty.";
   return `${plan.length} item(s) · ${totalLabels} label(s) total.`;
-}
-
-function jobItemToOpts(item: JobItem): LayoutOptions {
-  return { size: item.size, extra: { ...item.extras } };
 }
 
 function makeTapeSelect(): HTMLSelectElement {
@@ -351,6 +627,7 @@ function renderJobRow(item: JobItem, index: number, onChange: () => void): HTMLE
     const wantCableOd = layout?.optionFields?.().some((f) => f.key === "cableOd") ?? false;
     target.extras = wantCableOd ? { cableOd: parseFloat(cableOdIn.value) || 6 } : {};
     savePlan(plan);
+    onChange();
   };
   layoutSel.addEventListener("change", () => {
     persist();
@@ -454,80 +731,10 @@ function fmtId(id: string): string {
   return `${id.slice(0, 4)}-${id.slice(4, 8)}-${id.slice(8, 12)}`;
 }
 
-// Open a print-only window with one @page per label so the printer
-// auto-cuts between. Each plan item expands into `copies` pages, each
-// sized to that item's layout × size.
-function openPrintWindow(plan: JobItem[]): void {
-  // Expand into a flat list of {svg, w, h} to preserve mixed-page-size
-  // behavior — each label gets its own @page rule via :nth-of-type CSS.
-  interface Page {
-    svg: string;
-    widthMm: number;
-    heightMm: number;
-  }
-  const pages: Page[] = [];
-  for (const item of plan) {
-    const layout = getLayout(item.layoutId);
-    if (!layout) continue;
-    const opts = jobItemToOpts(item);
-    const dim = layout.measure(opts);
-    const svg = layout.renderSvg(item.id, opts);
-    for (let i = 0; i < item.copies; i++) {
-      pages.push({ svg, widthMm: dim.widthMm, heightMm: dim.heightMm });
-    }
-  }
-  if (pages.length === 0) {
-    alert("Nothing to print.");
-    return;
-  }
-
-  // CSS: per-page @page sizing. Browsers don't all honor per-element
-  // @page size, so we generate one stylesheet per *unique* dimension
-  // and group labels with the same dimension into separate sections —
-  // each section gets one @page rule. Auto-cut still happens between
-  // every page break.
-  const dimsKey = (p: Page) => `${p.widthMm.toFixed(3)}x${p.heightMm.toFixed(3)}`;
-  const groups = new Map<string, Page[]>();
-  for (const p of pages) {
-    const k = dimsKey(p);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k)!.push(p);
-  }
-
-  // Build sections; each section has its own @page-named class with a
-  // @page-at-class rule.
-  const styleParts: string[] = [
-    "html, body { margin: 0; padding: 0; }",
-    `.label { page-break-after: always; break-after: page; overflow: hidden; }`,
-    `.label:last-child { page-break-after: auto; break-after: auto; }`,
-    `svg { display: block; }`,
-  ];
-  const sections: string[] = [];
-  let i = 0;
-  for (const [key, items] of groups) {
-    const className = `pg${i++}`;
-    const w = items[0].widthMm.toFixed(3);
-    const h = items[0].heightMm.toFixed(3);
-    styleParts.push(
-      `@page ${className} { size: ${w}mm ${h}mm; margin: 0; }`,
-      `.${className} { page: ${className}; width: ${w}mm; height: ${h}mm; }`,
-    );
-    void key;
-    sections.push(
-      items
-        .map((p) => `<div class="label ${className}">${p.svg}</div>`)
-        .join("\n"),
-    );
-  }
-
-  const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Print labels</title>
-<style>${styleParts.join("\n")}</style>
-</head>
-<body onload="window.print(); setTimeout(() => window.close(), 500);">
-${sections.join("\n")}
-</body></html>`;
-
+// Open a print-only window with the HTML produced by the active output
+// mode. The mode owns the @page rules and body content; we only host
+// the popup and trigger window.print().
+function openPrintWindow(html: string): void {
   const w = window.open("", "_blank", "width=400,height=600");
   if (!w) {
     alert("Pop-up blocked — allow pop-ups for this site to print.");
@@ -537,4 +744,3 @@ ${sections.join("\n")}
   w.document.write(html);
   w.document.close();
 }
-
