@@ -11,13 +11,15 @@
 
 import { ISSUE_NEW_URL } from "../config";
 import type { AppContext, Plugin, PluginHost } from "../core/types";
+import { icon } from "../ui/icons";
+import { el } from "../ui/dom";
 
 export const errorReportPlugin: Plugin = {
   id: "error-report",
   install(host: PluginHost, _ctx: AppContext) {
     host.addToolbarButton({
       id: "error-report",
-      label: "🐞 Report",
+      label: "Report",
       title: "Capture a screenshot and open a prefilled GitHub issue.",
       onClick: async () => {
         try {
@@ -27,6 +29,14 @@ export const errorReportPlugin: Plugin = {
         }
       },
     });
+    // Replace the rendered toolbar button content with an icon + label.
+    const btn = document.querySelector<HTMLButtonElement>(
+      '.shell__toolbar [data-plugin-button="error-report"]',
+    );
+    if (btn) {
+      btn.innerHTML = "";
+      btn.append(icon("bug"), el("span", {}, "Report"));
+    }
   },
 };
 

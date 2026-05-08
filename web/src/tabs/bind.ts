@@ -1,24 +1,49 @@
-// Bind tab — UI scaffold for queueing binds. The submit step (open a
-// PR via the GitHub API) is stubbed for the spike; the queue persists
-// to localStorage so it survives reloads. Phase 2 fills in the API
-// flow per ADR-013.
+// Bind tab — queue binds locally as a table; submit-as-PR is stubbed
+// (issue #5).
+//
+// UX shape: a table where each row is a queued bind, fully inline-
+// editable (type / description / vendor / part_number / location /
+// notes). Delete via trash icon. The bottom row is an "empty entry"
+// row whose ID field has a camera-icon button to scan a QR — that's
+// the primary entry point. Manual paste is also supported.
 
 import { ID_REGEX } from "../config";
 import { FIELDS } from "../registry/schema";
 import type { AppContext, Tab } from "../core/types";
 import { el, button, input, formRow } from "../ui/dom";
+import { icon } from "../ui/icons";
+import { openScanner } from "../ui/scanner";
 
 const QUEUE_KEY = "part-registry.bind-queue";
 
+type EditableKey =
+  | "type"
+  | "description"
+  | "vendor"
+  | "part_number"
+  | "location"
+  | "notes";
+
 interface QueuedBind {
   id: string;
+  queued_at: string;
   type: string;
   description: string;
   vendor: string;
   part_number: string;
   location: string;
   notes: string;
-  queued_at: string;
+}
+
+function emptyEntry(): Omit<QueuedBind, "id" | "queued_at"> {
+  return {
+    type: "",
+    description: "",
+    vendor: "",
+    part_number: "",
+    location: "",
+    notes: "",
+  };
 }
 
 function loadQueue(): QueuedBind[] {
@@ -35,6 +60,12 @@ function saveQueue(q: QueuedBind[]): void {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
 }
 
+function fmtId(id: string): string {
+  // 4-4-4 grouping for display; underlying value stays canonical.
+  if (id.length !== 12) return id;
+  return `${id.slice(0, 4)}-${id.slice(4, 8)}-${id.slice(8, 12)}`;
+}
+
 export const bindTab: Tab = {
   id: "bind",
   label: "Bind",
@@ -46,86 +77,56 @@ export const bindTab: Tab = {
 
 function buildUI(ctx: AppContext): HTMLElement {
   const root = el("div", { class: "tab tab--bind" });
-  root.append(el("h2", {}, "Bind"));
+  root.append(el("h2", {}, "Bind queue"));
   root.append(
     el(
       "p",
       { class: "muted" },
-      "Queue binds locally; submit as a single PR when you're done. (Submit-as-PR is stubbed in this spike — the queue is real and persists across reloads.)",
+      "Scan a QR (camera icon in the empty row) or paste a 12-char ID, fill the metadata, queue. Submit-as-PR is stubbed for the spike (issue #5); the queue is real and persists across reloads.",
     ),
   );
 
-  const idIn = input({
-    type: "text",
-    placeholder: "12-char canonical ID",
-    autocapitalize: "characters",
-  });
+  const submitBtn = button({ class: "primary" }, icon("plus"), " Submit batch (stub)");
+  const clearBtn = button({}, icon("trash"), " Clear queue");
 
-  const editableFields = FIELDS.filter((f) => f.editable);
-  const fieldInputs = new Map<string, HTMLInputElement>();
-  const fieldRows: HTMLElement[] = [];
-  for (const f of editableFields) {
-    const inp = input({ type: "text", placeholder: f.label });
-    fieldInputs.set(f.key, inp);
-    fieldRows.push(formRow([el("label", {}, f.label), inp]));
-  }
+  const tableContainer = el("div", {});
 
-  const addBtn = button({ class: "primary" }, "Queue bind");
-  const submitBtn = button({}, "Submit batch (stub)");
-  const clearBtn = button({}, "Clear queue");
-
-  const queueList = el("ul", { class: "queue" });
-
-  const renderQueue = () => {
-    queueList.innerHTML = "";
-    const q = loadQueue();
-    if (q.length === 0) {
-      queueList.append(el("li", { class: "muted" }, "Queue is empty."));
-      return;
+  const renderTable = () => {
+    tableContainer.innerHTML = "";
+    const queue = loadQueue();
+    const table = el("table", { class: "data" });
+    const thead = el("thead");
+    const tr = el("tr");
+    tr.append(el("th", {}, "ID"));
+    for (const f of FIELDS.filter((f) => f.editable)) {
+      tr.append(el("th", {}, f.label));
     }
-    for (const item of q) {
-      queueList.append(
-        el(
-          "li",
-          {},
-          el("strong", {}, item.id),
-          ` — ${item.type || "(no type)"} @ ${item.location || "—"}`,
-        ),
+    tr.append(el("th", {}, "Queued"));
+    tr.append(el("th", {}, ""));
+    thead.append(tr);
+    table.append(thead);
+
+    const tbody = el("tbody");
+
+    // Existing queued rows: editable inline.
+    for (let i = 0; i < queue.length; i++) {
+      tbody.append(renderQueueRow(queue[i], i, () => renderTable()));
+    }
+
+    // Bottom "new entry" row.
+    tbody.append(renderEntryRow(ctx, () => renderTable()));
+
+    table.append(tbody);
+    tableContainer.append(table);
+
+    if (queue.length === 0) {
+      tableContainer.append(
+        el("p", { class: "muted small" }, "Queue is empty. Add a row below."),
       );
     }
   };
-  renderQueue();
 
-  addBtn.addEventListener("click", () => {
-    const id = idIn.value.trim().toUpperCase().replace(/-/g, "");
-    if (!ID_REGEX.test(id)) {
-      alert("ID must be 12 chars from the canonical alphabet.");
-      return;
-    }
-    const existing = ctx.registry.findById(id);
-    if (!existing) {
-      if (!confirm(`${id} is not in the loaded registry. Queue anyway?`)) return;
-    } else if (existing.status === "void") {
-      alert(`${id} is voided. Cannot bind.`);
-      return;
-    }
-    const entry: QueuedBind = {
-      id,
-      queued_at: new Date().toISOString(),
-      type: fieldInputs.get("type")?.value ?? "",
-      description: fieldInputs.get("description")?.value ?? "",
-      vendor: fieldInputs.get("vendor")?.value ?? "",
-      part_number: fieldInputs.get("part_number")?.value ?? "",
-      location: fieldInputs.get("location")?.value ?? "",
-      notes: fieldInputs.get("notes")?.value ?? "",
-    };
-    const q = loadQueue();
-    q.push(entry);
-    saveQueue(q);
-    idIn.value = "";
-    fieldInputs.forEach((i) => (i.value = ""));
-    renderQueue();
-  });
+  renderTable();
 
   submitBtn.addEventListener("click", () => {
     const q = loadQueue();
@@ -133,11 +134,10 @@ function buildUI(ctx: AppContext): HTMLElement {
       alert("Queue is empty.");
       return;
     }
-    // STUB — phase 2 work item: GitHub OAuth device flow + REST API
-    // batch PR creation. See part-registry#1.
+    // STUB — real GitHub OAuth + REST API path is issue #5.
     console.log("Pending binds (would be POSTed as a single PR):", q);
     alert(
-      `${q.length} bind(s) would be submitted as one PR.\n\nGitHub API integration is the phase-2 work tracked in issue #1; for now the queue stays in localStorage.`,
+      `${q.length} bind(s) would be submitted as one PR.\n\nSee issue #5 for the OAuth + REST integration.`,
     );
   });
 
@@ -145,15 +145,111 @@ function buildUI(ctx: AppContext): HTMLElement {
     if (loadQueue().length === 0) return;
     if (!confirm("Clear the bind queue without submitting?")) return;
     saveQueue([]);
-    renderQueue();
+    renderTable();
   });
 
-  root.append(
-    formRow([el("label", {}, "ID"), idIn]),
-    ...fieldRows,
-    formRow([addBtn, submitBtn, clearBtn]),
-    el("h3", {}, "Queue"),
-    queueList,
-  );
+  root.append(formRow([submitBtn, clearBtn]), tableContainer);
   return root;
+}
+
+function renderQueueRow(item: QueuedBind, index: number, onChange: () => void): HTMLElement {
+  const tr = el("tr");
+  tr.append(el("td", { class: "id-cell" }, fmtId(item.id)));
+
+  for (const f of FIELDS.filter((f) => f.editable)) {
+    const cell = el("td");
+    const key = f.key as EditableKey;
+    const inp = input({ type: "text", value: item[key] });
+    inp.addEventListener("change", () => {
+      const queue = loadQueue();
+      if (queue[index]) {
+        queue[index][key] = inp.value;
+        saveQueue(queue);
+      }
+    });
+    cell.append(inp);
+    tr.append(cell);
+  }
+
+  tr.append(
+    el(
+      "td",
+      { class: "muted small" },
+      new Date(item.queued_at).toLocaleString(),
+    ),
+  );
+
+  const trashBtn = button({ class: "icon-only", title: "Remove from queue" }, icon("trash"));
+  trashBtn.addEventListener("click", () => {
+    const queue = loadQueue();
+    queue.splice(index, 1);
+    saveQueue(queue);
+    onChange();
+  });
+  tr.append(el("td", { class: "row-actions" }, trashBtn));
+
+  return tr;
+}
+
+function renderEntryRow(ctx: AppContext, onAdd: () => void): HTMLElement {
+  const tr = el("tr", { class: "entry-row" });
+  const idInput = input({
+    type: "text",
+    placeholder: "12-char ID",
+    autocapitalize: "characters",
+  });
+  const scanBtn = button({ class: "icon-only", title: "Scan QR" }, icon("camera"));
+  scanBtn.addEventListener("click", async () => {
+    try {
+      const v = await openScanner();
+      idInput.value = v.toUpperCase().replace(/-/g, "");
+      idInput.focus();
+    } catch {
+      /* user cancelled */
+    }
+  });
+  const idCell = el("td", { class: "id-cell" });
+  const idWrap = el("div", { style: "display:flex; gap:4px;" });
+  idWrap.append(idInput, scanBtn);
+  idCell.append(idWrap);
+  tr.append(idCell);
+
+  const fieldInputs = new Map<EditableKey, HTMLInputElement>();
+  for (const f of FIELDS.filter((f) => f.editable)) {
+    const inp = input({ type: "text", placeholder: f.label });
+    fieldInputs.set(f.key as EditableKey, inp);
+    tr.append(el("td", {}, inp));
+  }
+
+  tr.append(el("td", {}, ""));
+
+  const addBtn = button({ class: "icon-only primary", title: "Queue this bind" }, icon("plus"));
+  addBtn.addEventListener("click", () => {
+    const id = idInput.value.trim().toUpperCase().replace(/-/g, "");
+    if (!ID_REGEX.test(id)) {
+      alert("ID must be 12 chars from the canonical alphabet.");
+      return;
+    }
+    const existing = ctx.registry.findById(id);
+    if (existing && existing.status === "void") {
+      alert(`${id} is voided. Cannot bind.`);
+      return;
+    }
+    if (!existing && !confirm(`${id} is not in the loaded registry. Queue anyway?`)) {
+      return;
+    }
+    const queue = loadQueue();
+    const entry: QueuedBind = {
+      id,
+      queued_at: new Date().toISOString(),
+      ...emptyEntry(),
+    };
+    for (const [k, inp] of fieldInputs) entry[k] = inp.value;
+    queue.push(entry);
+    saveQueue(queue);
+    onAdd();
+  });
+  tr.append(el("td", { class: "row-actions" }, addBtn));
+
+  return tr;
 }

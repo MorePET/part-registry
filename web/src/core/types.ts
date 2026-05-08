@@ -12,6 +12,8 @@ import type { Registry } from "../registry/registry";
 
 export interface AppContext {
   registry: Registry;
+  /** Switch to a tab by id (tab navigation as a primitive). */
+  showTab(id: string): void;
   // Future: auth provider, settings store, plugin host, etc.
 }
 

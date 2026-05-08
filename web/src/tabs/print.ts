@@ -13,6 +13,15 @@ import {
   formRow,
   number as numberInput,
 } from "../ui/dom";
+import { icon } from "../ui/icons";
+import { events, EVENT_REPRINT_REQUEST, type ReprintRequest } from "../core/events";
+
+// Cross-tab handoff: Lookup → Print "reprint" emits a ReprintRequest;
+// next time Print mounts it picks the IDs up.
+let pendingReprint: string[] = [];
+events.on<ReprintRequest>(EVENT_REPRINT_REQUEST, (req) => {
+  pendingReprint = req.ids;
+});
 
 export const printTab: Tab = {
   id: "print",
@@ -65,6 +74,11 @@ function buildUI(ctx: AppContext): HTMLElement {
     type: "text",
     placeholder: "Comma-separated IDs",
   });
+  // Pre-fill if a reprint was queued from the Lookup tab.
+  if (pendingReprint.length > 0) {
+    idsIn.value = pendingReprint.join(", ");
+    pendingReprint = [];
+  }
   const batchSel = select([
     { value: "", label: "— pick a batch —" },
     ...ctx.registry.batches().map((b) => ({ value: b, label: b })),
@@ -94,8 +108,8 @@ function buildUI(ctx: AppContext): HTMLElement {
   layoutSel.addEventListener("change", updateLayoutExtras);
   updateLayoutExtras();
 
-  const previewBtn = button({}, "Preview");
-  const printBtn = button({ class: "primary" }, "Print");
+  const previewBtn = button({}, icon("search"), " Preview");
+  const printBtn = button({ class: "primary" }, icon("printer"), " Print");
 
   const status = el("p", { class: "muted" }, "Pick selection above. Preview shows the rendered labels; Print opens the OS print dialog.");
   const preview = el("div", { class: "label-preview" });

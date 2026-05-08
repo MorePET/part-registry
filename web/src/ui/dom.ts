@@ -2,22 +2,26 @@
 // manually constructing elements. Keeps form/row/button styling
 // consistent and centralizes any future a11y/i18n hooks.
 
-type Children = (Node | string)[];
+type ChildLike = Node | string | undefined | null;
+
+function appendChildren(node: HTMLElement, children: ChildLike[]): void {
+  for (const c of children) {
+    if (c === undefined || c === null) continue;
+    node.append(typeof c === "string" ? document.createTextNode(c) : c);
+  }
+}
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   attrs: Record<string, string> = {},
-  ...children: (Node | string | undefined)[]
+  ...children: ChildLike[]
 ): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
     else node.setAttribute(k, v);
   }
-  for (const c of children) {
-    if (c === undefined) continue;
-    node.append(typeof c === "string" ? document.createTextNode(c) : c);
-  }
+  appendChildren(node, children);
   return node;
 }
 
@@ -40,7 +44,7 @@ export function number(attrs: { value: number; min?: number; max?: number; step?
 
 export function button(
   attrs: Record<string, string> = {},
-  ...children: Children
+  ...children: ChildLike[]
 ): HTMLButtonElement {
   const node = document.createElement("button");
   node.type = "button";
@@ -48,9 +52,7 @@ export function button(
     if (k === "class") node.className = v;
     else node.setAttribute(k, v);
   }
-  for (const c of children) {
-    node.append(typeof c === "string" ? document.createTextNode(c) : c);
-  }
+  appendChildren(node as unknown as HTMLElement, children);
   return node;
 }
 
@@ -67,10 +69,8 @@ export function select(
   return node;
 }
 
-export function formRow(children: (Node | string)[]): HTMLElement {
+export function formRow(children: ChildLike[]): HTMLElement {
   const row = el("div", { class: "form-row" });
-  for (const c of children) {
-    row.append(typeof c === "string" ? document.createTextNode(c) : c);
-  }
+  appendChildren(row, children);
   return row;
 }

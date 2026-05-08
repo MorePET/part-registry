@@ -1,10 +1,17 @@
-// Lookup tab — search by ID or scan QR, show registry row.
+// Lookup tab — search by ID/prefix or scan QR, show registry row,
+// reprint via cross-tab event.
+//
+// (A future issue, #10, expands this to a full filterable data-grid
+// with column filters and fuzzy search. For the spike: detail view
+// of a single match.)
 
 import { ID_REGEX } from "../config";
-import { FIELDS } from "../registry/schema";
-import type { RegistryRow } from "../registry/schema";
+import { FIELDS, type RegistryRow } from "../registry/schema";
 import type { AppContext, Tab } from "../core/types";
+import { events, EVENT_REPRINT_REQUEST, type ReprintRequest } from "../core/events";
 import { el, button, input, formRow } from "../ui/dom";
+import { icon } from "../ui/icons";
+import { openScanner } from "../ui/scanner";
 
 export const lookupTab: Tab = {
   id: "lookup",
@@ -26,8 +33,8 @@ function buildUI(ctx: AppContext): HTMLElement {
     autocapitalize: "characters",
   });
 
-  const goBtn = button({}, "Find");
-  const scanBtn = button({}, "Scan with camera");
+  const scanBtn = button({ class: "icon-only", title: "Scan QR with camera" }, icon("camera"));
+  const goBtn = button({ class: "primary" }, icon("search"), " Find");
 
   const result = el("div", { class: "lookup__result" });
 
@@ -38,7 +45,7 @@ function buildUI(ctx: AppContext): HTMLElement {
       result.append(el("p", { class: "muted" }, "Enter or scan an ID."));
       return;
     }
-    if (!ID_REGEX.test(raw) && raw.length === 12) {
+    if (raw.length === 12 && !ID_REGEX.test(raw)) {
       result.append(el("p", { class: "error" }, "ID contains characters outside the canonical alphabet."));
       return;
     }
@@ -51,36 +58,33 @@ function buildUI(ctx: AppContext): HTMLElement {
     }
     if (matches.length > 1) {
       result.append(
-        el(
-          "p",
-          { class: "warn" },
-          `${matches.length} matches for prefix "${raw}":`,
-        ),
+        el("p", { class: "warn" }, `${matches.length} matches for prefix "${raw}":`),
       );
-      result.append(renderMatchList(matches));
+      result.append(renderMatchList(matches, ctx));
       return;
     }
-    result.append(renderRowDetail(matches[0]));
+    result.append(renderRowDetail(matches[0], ctx));
   };
 
   goBtn.addEventListener("click", onSubmit);
   queryInput.addEventListener("keydown", (e) => {
     if ((e as KeyboardEvent).key === "Enter") onSubmit();
   });
-
-  scanBtn.addEventListener("click", () => {
-    void startScan(queryInput, onSubmit);
+  scanBtn.addEventListener("click", async () => {
+    try {
+      const text = await openScanner();
+      queryInput.value = text;
+      onSubmit();
+    } catch {
+      // User cancelled or camera failed — silent for cancel.
+    }
   });
 
-  root.append(
-    header,
-    formRow([queryInput, goBtn, scanBtn]),
-    result,
-  );
+  root.append(header, formRow([queryInput, scanBtn, goBtn]), result);
   return root;
 }
 
-function renderRowDetail(row: RegistryRow): HTMLElement {
+function renderRowDetail(row: RegistryRow, ctx: AppContext): HTMLElement {
   const wrap = el("div", { class: "row-detail" });
   const dl = el("dl");
   for (const f of FIELDS) {
@@ -89,10 +93,18 @@ function renderRowDetail(row: RegistryRow): HTMLElement {
     dl.append(el("dd", {}, value || el("span", { class: "muted" }, "—")));
   }
   wrap.append(dl);
+
+  const reprintBtn = button({ class: "primary" }, icon("reprint"), " Reprint label");
+  reprintBtn.addEventListener("click", () => {
+    const payload: ReprintRequest = { ids: [row.id] };
+    events.emit(EVENT_REPRINT_REQUEST, payload);
+    ctx.showTab("print");
+  });
+  wrap.append(formRow([reprintBtn]));
   return wrap;
 }
 
-function renderMatchList(rows: RegistryRow[]): HTMLElement {
+function renderMatchList(rows: RegistryRow[], ctx: AppContext): HTMLElement {
   const ul = el("ul", { class: "match-list" });
   for (const row of rows) {
     const li = el("li", {});
@@ -102,47 +114,16 @@ function renderMatchList(rows: RegistryRow[]): HTMLElement {
       { class: "muted" },
       `  ${row.status}  ${row.type || "(unbound)"}  @ ${row.location || "—"}`,
     );
-    li.append(id, meta);
+    const reprint = button(
+      { class: "icon-only", title: "Reprint" },
+      icon("reprint"),
+    );
+    reprint.addEventListener("click", () => {
+      events.emit<ReprintRequest>(EVENT_REPRINT_REQUEST, { ids: [row.id] });
+      ctx.showTab("print");
+    });
+    li.append(id, meta, " ", reprint);
     ul.append(li);
   }
   return ul;
-}
-
-// QR camera scan via @zxing/browser. Lazy-imported so the module isn't
-// loaded for users who never scan.
-async function startScan(
-  target: HTMLInputElement,
-  onResult: () => void,
-): Promise<void> {
-  const { BrowserQRCodeReader } = await import("@zxing/browser");
-  const reader = new BrowserQRCodeReader();
-  const overlay = el("div", { class: "scan-overlay" });
-  const video = el("video", { class: "scan-overlay__video" }) as HTMLVideoElement;
-  const cancel = button({ class: "scan-overlay__cancel" }, "Cancel");
-  overlay.append(video, cancel);
-  document.body.append(overlay);
-
-  let controls: { stop(): void } | undefined;
-  const close = () => {
-    controls?.stop();
-    overlay.remove();
-  };
-  cancel.addEventListener("click", close);
-
-  try {
-    controls = await reader.decodeFromVideoDevice(
-      undefined,
-      video,
-      (result) => {
-        if (result) {
-          target.value = result.getText().toUpperCase();
-          close();
-          onResult();
-        }
-      },
-    );
-  } catch (e) {
-    close();
-    alert(`Camera failed: ${(e as Error).message}`);
-  }
 }

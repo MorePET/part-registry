@@ -3,5 +3,6 @@
 
 import type { Plugin } from "../core/types";
 import { errorReportPlugin } from "./error-report";
+import { themePlugin } from "./theme";
 
-export const PLUGINS: Plugin[] = [errorReportPlugin];
+export const PLUGINS: Plugin[] = [themePlugin, errorReportPlugin];

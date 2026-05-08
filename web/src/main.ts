@@ -19,13 +19,22 @@ async function main(): Promise<void> {
   if (!root) throw new Error("missing #app");
 
   const registry = createRegistry();
-  const ctx: AppContext = { registry };
+
+  // showTab is set after the tab system is wired below — but tabs
+  // and plugins receive `ctx` early, so we reference a mutable holder.
+  const ctxHolder: { showTab: (id: string) => void } = {
+    showTab: () => {
+      throw new Error("showTab called before tabs were wired");
+    },
+  };
+  const ctx: AppContext = {
+    registry,
+    showTab: (id) => ctxHolder.showTab(id),
+  };
 
   const layout = renderLayout();
   root.append(layout.shell);
 
-  // Plugins: install before registry-load so toolbar is ready even
-  // during the loading state.
   installPlugins(layout.toolbar, ctx, PLUGINS);
 
   layout.statusBar.textContent = "Loading registry…";
@@ -38,7 +47,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Tabs: wire after data is ready.
   const tabBar = el("nav", { class: "tabs" });
   const panel = el("section", { class: "tab-panel" });
   layout.main.append(tabBar, panel);
@@ -47,13 +55,15 @@ async function main(): Promise<void> {
   let activeTabId = TABS[0]?.id;
 
   const showTab = async (id: string) => {
+    const tab = TABS.find((t) => t.id === id);
+    if (!tab) return;
     activeTabId = id;
     for (const [k, btn] of tabButtons) {
       btn.classList.toggle("active", k === id);
     }
-    const tab = TABS.find((t) => t.id === id);
-    if (tab) await tab.mount(panel, ctx);
+    await tab.mount(panel, ctx);
   };
+  ctxHolder.showTab = (id) => void showTab(id);
 
   for (const tab of TABS) {
     const btn = button({ class: "tab-btn" }, tab.label);
@@ -85,10 +95,15 @@ function renderLayout() {
 }
 
 function installPlugins(toolbar: HTMLElement, ctx: AppContext, plugins: Plugin[]): void {
+  let pendingId = "";
   const host: PluginHost = {
     addToolbarButton(spec: ToolbarButtonSpec) {
       const btn = button(
-        { class: "toolbar-btn", title: spec.title ?? spec.label },
+        {
+          class: "toolbar-btn",
+          title: spec.title ?? spec.label,
+          "data-plugin-button": pendingId,
+        },
         spec.label,
       );
       btn.addEventListener("click", () => void spec.onClick());
@@ -101,7 +116,10 @@ function installPlugins(toolbar: HTMLElement, ctx: AppContext, plugins: Plugin[]
       setTimeout(() => t.remove(), 4000);
     },
   };
-  for (const p of plugins) p.install(host, ctx);
+  for (const p of plugins) {
+    pendingId = p.id;
+    p.install(host, ctx);
+  }
 }
 
 void main();
