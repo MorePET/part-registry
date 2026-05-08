@@ -164,5 +164,10 @@ table.data .actions { display: flex; gap: 4px; justify-content: flex-end; }
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   z-index: 200;
 }
-.scan-overlay__video { width: 90%; max-width: 480px; max-height: 70vh; }
+.scan-overlay__video { width: 90%; max-width: 480px; max-height: 70vh; background: #000; }
+.scan-overlay__badge {
+  margin-top: 12px; padding: 4px 10px; border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.1); color: #fff;
+  font-family: ui-monospace, monospace; font-size: 12px;
+}
 .scan-overlay__cancel { margin-top: 16px; }
