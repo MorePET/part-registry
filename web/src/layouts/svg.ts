@@ -47,22 +47,19 @@ export function qrBlock(canonical: string, x: number, y: number, size: number): 
 
 export function textBlock(canonical: string, x: number, y: number, size: number): string {
   const rows = [canonical.slice(0, 4), canonical.slice(4, 8), canonical.slice(8, 12)];
-  const innerH = size * 0.8;
-  const font = innerH / 3.6;
-  const gap = font * 0.3;
+  const innerH = size * 0.92;
+  const font = innerH / 3.4;
+  const gap = font * 0.2;
   const cx = x + size / 2;
   const y0 = y + (size - innerH) / 2 + font * 0.85;
-  // Mirror label.py text_block: bold font + thin black stroke for
-  // legibility at <2 mm. Without the stroke, bold is only synthetic on
-  // most rendering pipelines and the gain is marginal.
-  const strokeW = font * 0.03;
+  // Bold font only, no stroke — see label.py text_block for rationale
+  // (stroke on small text rasterises with a visible ghost halo).
   return rows
     .map(
       (row, i) =>
         `<text x="${cx.toFixed(3)}" y="${(y0 + i * (font + gap)).toFixed(3)}" ` +
-        `font-family="Courier Bold, Courier New, Courier, monospace" ` +
-        `font-weight="700" font-size="${font.toFixed(3)}" ` +
-        `stroke="#000" stroke-width="${strokeW.toFixed(3)}" ` +
+        `font-family="Courier New, Courier, monospace" ` +
+        `font-weight="bold" font-size="${font.toFixed(3)}" ` +
         `text-anchor="middle" fill="#000">${row}</text>`,
     )
     .join("\n");
