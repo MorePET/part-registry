@@ -5,9 +5,10 @@
 // with column filters and fuzzy search. For the spike: detail view
 // of a single match.)
 
-import { ID_REGEX } from "../config";
+import { ID_LENGTH, ID_REGEX } from "../config";
 import { FIELDS, type RegistryRow } from "../registry/schema";
 import type { AppContext, Tab } from "../core/types";
+import { normalizeCanonicalId } from "../routing/route";
 import { events, EVENT_REPRINT_REQUEST, type ReprintRequest } from "../core/events";
 import { el, button, input, formRow } from "../ui/dom";
 import { icon } from "../ui/icons";
@@ -28,7 +29,7 @@ function buildUI(ctx: AppContext): HTMLElement {
 
   const queryInput = input({
     type: "text",
-    placeholder: "Scan QR or paste 12-char ID",
+    placeholder: "Scan QR or paste ID (14-char)",
     autocomplete: "off",
     autocapitalize: "characters",
   });
@@ -38,18 +39,29 @@ function buildUI(ctx: AppContext): HTMLElement {
 
   const result = el("div", { class: "lookup__result" });
 
+  const showInvalidId = (rawSegment: string, normalized: string) => {
+    result.innerHTML = "";
+    result.append(
+      el(
+        "p",
+        { class: "error" },
+        `ID "${rawSegment}" normalizes to "${normalized}" but contains characters outside the canonical alphabet or has the wrong length.`,
+      ),
+    );
+  };
+
   const onSubmit = () => {
     result.innerHTML = "";
-    const raw = queryInput.value.trim().toUpperCase().replace(/-/g, "");
+    const raw = normalizeCanonicalId(queryInput.value);
     if (!raw) {
       result.append(el("p", { class: "muted" }, "Enter or scan an ID."));
       return;
     }
-    if (raw.length === 12 && !ID_REGEX.test(raw)) {
+    if (raw.length > ID_LENGTH || (raw.length === ID_LENGTH && !ID_REGEX.test(raw))) {
       result.append(el("p", { class: "error" }, "ID contains characters outside the canonical alphabet."));
       return;
     }
-    const matches = raw.length === 12
+    const matches = raw.length === ID_LENGTH
       ? ([ctx.registry.findById(raw)].filter(Boolean) as RegistryRow[])
       : ctx.registry.find({ prefix: raw });
     if (matches.length === 0) {
@@ -63,6 +75,7 @@ function buildUI(ctx: AppContext): HTMLElement {
       result.append(renderMatchList(matches, ctx));
       return;
     }
+    ctx.showPart(matches[0].id);
     result.append(renderRowDetail(matches[0], ctx));
   };
 
@@ -93,6 +106,16 @@ function buildUI(ctx: AppContext): HTMLElement {
   });
 
   root.append(header, formRow([queryInput, scanBtn, goBtn]), result);
+
+  const route = ctx.getRoute();
+  if (route.kind === "part") {
+    queryInput.value = route.id;
+    onSubmit();
+  } else if (route.kind === "invalid-part-id") {
+    queryInput.value = route.rawSegment;
+    showInvalidId(route.rawSegment, route.normalized);
+  }
+
   return root;
 }
 
@@ -120,7 +143,11 @@ function renderMatchList(rows: RegistryRow[], ctx: AppContext): HTMLElement {
   const ul = el("ul", { class: "match-list" });
   for (const row of rows) {
     const li = el("li", {});
-    const id = el("strong", {}, row.id);
+    const open = button({ class: "linkish", title: `Open ${row.id}` }, row.id);
+    open.addEventListener("click", () => {
+      ctx.showPart(row.id);
+      ctx.showTab("lookup");
+    });
     const meta = el(
       "span",
       { class: "muted" },
@@ -134,7 +161,7 @@ function renderMatchList(rows: RegistryRow[], ctx: AppContext): HTMLElement {
       events.emit<ReprintRequest>(EVENT_REPRINT_REQUEST, { ids: [row.id] });
       ctx.showTab("print");
     });
-    li.append(id, meta, " ", reprint);
+    li.append(open, meta, " ", reprint);
     ul.append(li);
   }
   return ul;

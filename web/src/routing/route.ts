@@ -5,7 +5,7 @@ const DEFAULT_BASE_PATH = (() => {
   return base === "/" ? "/part-registry/" : base;
 })();
 
-function normalizeBasePath(basePath: string): string {
+export function normalizeBasePath(basePath: string): string {
   if (!basePath.startsWith("/")) return `/${basePath.replace(/^\/+/, "")}`;
   return basePath.endsWith("/") ? basePath : `${basePath}/`;
 }
@@ -37,4 +37,8 @@ export function parseAppPath(
     return { kind: "invalid-part-id", rawSegment, normalized };
   }
   return { kind: "part", id: normalized };
+}
+
+export function buildPartPath(id: string, basePath = DEFAULT_BASE_PATH): string {
+  return `${normalizeBasePath(basePath)}${normalizeCanonicalId(id)}`;
 }

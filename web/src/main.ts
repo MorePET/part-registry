@@ -12,6 +12,7 @@ import type {
 } from "./core/types";
 import { TABS } from "./tabs";
 import { PLUGINS } from "./plugins";
+import { buildPartPath, parseAppPath, type AppPath } from "./routing/route";
 import { el, button } from "./ui/dom";
 
 async function main(): Promise<void> {
@@ -27,10 +28,20 @@ async function main(): Promise<void> {
       throw new Error("showTab called before tabs were wired");
     },
   };
+  let route: AppPath = parseAppPath(window.location.pathname);
   const ctx: AppContext = {
     registry,
     showTab: (id) => ctxHolder.showTab(id),
+    showPart: (id) => {
+      route = { kind: "part", id };
+      const nextUrl = new URL(window.location.href);
+      nextUrl.pathname = buildPartPath(id, import.meta.env.BASE_URL);
+      window.history.pushState({}, "", nextUrl);
+    },
+    getRoute: () => route,
   };
+
+  syncCanonicalPath(route);
 
   const layout = renderLayout();
   root.append(layout.shell);
@@ -52,7 +63,7 @@ async function main(): Promise<void> {
   layout.main.append(tabBar, panel);
 
   const tabButtons = new Map<string, HTMLButtonElement>();
-  let activeTabId = TABS[0]?.id;
+  let activeTabId = route.kind === "home" ? TABS[0]?.id : "lookup";
 
   const showTab = async (id: string) => {
     const tab = TABS.find((t) => t.id === id);
@@ -71,7 +82,26 @@ async function main(): Promise<void> {
     tabButtons.set(tab.id, btn);
     tabBar.append(btn);
   }
+
+  window.addEventListener("popstate", () => {
+    route = parseAppPath(window.location.pathname);
+    syncCanonicalPath(route);
+    const nextTabId = route.kind === "home" ? TABS[0]?.id : "lookup";
+    if (nextTabId) void showTab(nextTabId);
+  });
+
   if (activeTabId) await showTab(activeTabId);
+}
+
+function syncCanonicalPath(route: AppPath): void {
+  if (route.kind !== "part") return;
+
+  const canonicalPath = buildPartPath(route.id, import.meta.env.BASE_URL);
+  if (window.location.pathname === canonicalPath) return;
+
+  const nextUrl = new URL(window.location.href);
+  nextUrl.pathname = canonicalPath;
+  window.history.replaceState({}, "", nextUrl);
 }
 
 function renderLayout() {
