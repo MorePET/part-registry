@@ -1,11 +1,11 @@
 # ADR-018 — Storage as a port
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-10
 - Component / area: cross-cutting — defines the trait shape every
   persistence backend in the project must implement; first adapter is
   CSV+git, future adapters cited in §Forward-compatibility
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Related: ADR-013 (Parts registry web app — names CSV+git as the
   substrate), ADR-014 (Web app architecture), ADR-015 (Print event
   log), ADR-016 (PR-diff policy enforcement), ADR-017 (Rust core +

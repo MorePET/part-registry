@@ -1,10 +1,10 @@
 # ADR-027 — Port conformance + forward-compatibility tests
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-10
 - Component / area: cross-cutting — defines the test discipline that
   enforces the ports/adapters architecture committed in ADR-017
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Related: ADR-017 (Rust core + ports/adapters), ADR-018 (Storage
   port), ADR-019 (Proposal sink port), ADR-020 (Identity port),
   ADR-022 (Observability), ADR-023 (Threat model + crypto MVP),

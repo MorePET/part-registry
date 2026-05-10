@@ -1,11 +1,11 @@
 # ADR-017 — Rust core, ports/adapters, multi-target deploy
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-10
 - Component / area: cross-cutting — replaces the Python+Pyodide
   trajectory captured in ADR-013/014 with a Rust workspace; defines
   the architectural shape every other ADR builds against
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Supersedes (in part): ADR-014 §"Pyodide migration trigger" — the
   trigger is no longer "when do we move to Pyodide"; the answer is
   "we don't, we move to Rust"

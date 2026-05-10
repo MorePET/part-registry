@@ -1,12 +1,12 @@
 # ADR-024 — Cryptographic baseline (MVP)
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-10
 - Component / area: cross-cutting — concrete implementation of the
   MVP cryptographic controls fixed by ADR-023; defines the
   `signing/` workspace crate (per ADR-017) and the branch-protection
   configuration that enforces the controls in CI
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Related: ADR-016 (PR-diff policy), ADR-017 (Rust core), ADR-018
   (Storage port), ADR-019 (Proposal sink), ADR-020 (Identity port),
   ADR-022 (Observability + audit), ADR-023 (Threat model + crypto-MVP

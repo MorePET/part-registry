@@ -1,13 +1,13 @@
 # ADR-020 — Identity & authorization as a port
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-10
 - Component / area: cross-cutting — defines the trait shape for
   operator identity and the authorization decision surface that every
   mutation in the system flows through; first adapters are
   `identity_git_config` (CLI), `identity_github_oauth` (FE), and
   `identity_env_user` (test/dev only)
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Related: ADR-013 (Parts registry web app — names "auth = GitHub
   identity" aspirationally), ADR-014 (Web app architecture), ADR-016
   (PR-diff policy enforcement — consumes `&Operator + &Diff`), ADR-017

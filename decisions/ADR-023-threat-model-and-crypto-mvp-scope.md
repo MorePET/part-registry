@@ -1,10 +1,10 @@
 # ADR-023 — Threat model + crypto-MVP scope
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-10
 - Component / area: cross-cutting — defines the security posture all
   other ADRs are built against
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Related: ADR-016 (PR-diff policy), ADR-017 (Rust core), ADR-020
   (Identity port), ADR-022 (Observability), ADR-024 (Crypto baseline),
   ADR-025 (Distribution integrity)

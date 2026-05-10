@@ -1,10 +1,10 @@
 # ADR-016 — PR-diff-based policy enforcement for registry changes
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-08
 - Component / area: registry governance (`registry.csv`, future
   `print_log.csv` / related files), CI validators, PR review policy
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Related: ADR-017 (Rust core), ADR-018 (Storage port), ADR-020 (Identity port), ADR-023 (Threat model)
 
 ## Context

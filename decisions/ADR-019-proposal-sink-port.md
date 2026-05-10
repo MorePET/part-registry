@@ -1,12 +1,12 @@
 # ADR-019 — Proposal sink as a port
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-10
 - Component / area: cross-cutting — defines the trait shape every
   mutation pathway in the project must implement; first adapter is
   GitHub PR via REST API, future adapters cited in
   §Forward-compatibility
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Related: ADR-013 (Parts registry web app — PR-driven mutation
   model), ADR-014 (Web app architecture — queue-and-batch-submit
   pattern), ADR-016 (PR-diff policy enforcement — CI is the policy

@@ -1,11 +1,11 @@
 # ADR-025 — Distribution integrity (signed releases, SRI, reproducible builds, future Cosign)
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-10
 - Component / area: cross-cutting — release packaging and end-user
   delivery for the Rust CLI binaries, the WASM module, and any
   future Tauri / mobile / embedded artifact
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Related: ADR-017 (Rust core + reproducible build mandate), ADR-023
   (threat model + MVP crypto scope), ADR-024 (signing port + signed
   commits + signed tags), ADR-027 (drift-detection enforces

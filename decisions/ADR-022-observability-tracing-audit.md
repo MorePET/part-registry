@@ -1,13 +1,13 @@
 # ADR-022 — Observability: tracing + audit trail
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-10
 - Component / area: cross-cutting — single structured event stream
   for the workspace (CLI, FE-via-WASM, CI), layered subscriber set,
   `AuditEntry` schema written to the data repo, and `request_id`
   propagation tying one user action to its CLI logs, FE telemetry,
   audit-log row, PR, and CI run
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Related: ADR-013, ADR-014, ADR-015 (Print event log — generalised
   by this ADR), ADR-016 (emits policy-decision audit events), ADR-017
   (names `crates/observability/`), ADR-018 (`Repository::append_audit_event`),

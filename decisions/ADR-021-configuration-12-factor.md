@@ -1,11 +1,11 @@
 # ADR-021 — Configuration model (12-factor)
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-05-10
 - Component / area: cross-cutting — defines the single read site for
   every deploy-varying value in the system; selects every adapter named
   by ADR-018 / ADR-019 / ADR-020 / ADR-024
-- Reviewers: _(pending)_
+- Reviewers: Lars Gerchow
 - Related: ADR-013 (Parts registry web app — fixes the data substrate
   whose path is now configurable), ADR-017 (Rust core + ports/adapters
   — names `crates/config/`), ADR-018 (Storage port — adapter selected
