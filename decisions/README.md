@@ -53,6 +53,7 @@ Foundation set (architectural reset, 2026-05-10 — see [LOG.md](LOG.md)):
 - [ADR-022 — Observability: structured tracing + audit log + request_id propagation](ADR-022-observability-tracing-audit.md)
 - [ADR-023 — Threat model + crypto-MVP scope (the keystone for ADRs 020/022/024)](ADR-023-threat-model-and-crypto-mvp-scope.md)
 - [ADR-024 — Cryptographic baseline MVP + bolt-on path to full crypto](ADR-024-crypto-baseline-mvp.md)
+- [ADR-025 — Distribution integrity (signed releases, SRI, repro builds, future Cosign)](ADR-025-distribution-integrity.md)
 - [ADR-027 — Port conformance + forward-compatibility test framework](ADR-027-port-conformance-tests.md)
 
 Earlier ADRs (still Proposed; ADR-016 updated 2026-05-10 to align with foundation set):
