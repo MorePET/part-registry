@@ -46,9 +46,11 @@ export function qrBlock(canonical: string, x: number, y: number, size: number): 
 }
 
 export function textBlock(canonical: string, x: number, y: number, size: number): string {
-  const rows = [canonical.slice(0, 4), canonical.slice(4, 8), canonical.slice(8, 12)];
+  // Human-visible text is the bench-side prefix, not the full canonical ID.
+  // The QR still carries the full payload; the printed text defaults to 4/4.
+  const rows = [canonical.slice(0, 4), canonical.slice(4, 8)];
   const innerH = size * 0.92;
-  const font = innerH / 3.4;
+  const font = innerH / 2.2;
   const gap = font * 0.2;
   const cx = x + size / 2;
   const y0 = y + (size - innerH) / 2 + font * 0.85;
@@ -58,7 +60,7 @@ export function textBlock(canonical: string, x: number, y: number, size: number)
     .map(
       (row, i) =>
         `<text x="${cx.toFixed(3)}" y="${(y0 + i * (font + gap)).toFixed(3)}" ` +
-        `font-family="Courier New, Courier, monospace" ` +
+        `font-family="Consolas, monospace" ` +
         `font-weight="bold" font-size="${font.toFixed(3)}" ` +
         `text-anchor="middle" fill="#000">${row}</text>`,
     )

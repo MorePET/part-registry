@@ -423,10 +423,10 @@ function makeOverlay(badgeText: string, multi: boolean): OverlayHandle {
       group.append(poly);
 
       // Caption near the top of the polygon: 4-4-4 dashed canonical ID
-      // if it matches our 12-char shape; raw value otherwise.
+      // if it matches our ID shape; raw value otherwise.
       const caption =
-        canonical.length === 12
-          ? `${canonical.slice(0, 4)}-${canonical.slice(4, 8)}-${canonical.slice(8, 12)}`
+        canonical.length >= 12
+          ? `${canonical.slice(0, 4)}-${canonical.slice(4, 8)}-${canonical.slice(8, 12)}${canonical.length > 12 ? '-' + canonical.slice(12) : ''}`
           : canonical || m.rawValue;
       const tx =
         m.cornerPoints.reduce((s, p) => s + p.x, 0) / m.cornerPoints.length;

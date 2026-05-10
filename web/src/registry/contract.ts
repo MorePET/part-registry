@@ -5,6 +5,7 @@ export interface RegistryContract {
     alphabet: string;
     canonicalLength: number;
     prefixLength: number;
+    legacyCanonicalLength?: number;
   };
   statuses: string[];
   fields: Array<{

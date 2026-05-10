@@ -27,8 +27,6 @@ from registry_contract import (
 
 # --- canonical schema ---------------------------------------------------
 
-# Accept both canonical (14) and legacy (12) lengths. Legacy IDs are
-# deprecated — they still validate but emit a warning violation.
 ID_REGEX = re.compile(rf"^[{ALPHABET}]{{{ID_LENGTH}}}$")
 STATUS_VALUES: frozenset[str] = frozenset(CONTRACT_STATUS_VALUES)
 
@@ -111,15 +109,33 @@ def validate_row(row: dict[str, str], line: int | None = None) -> list[Violation
     # ID alphabet / length. Only checked if `id` is non-empty — otherwise
     # the required-field violation above already covers it.
     if rid and not ID_REGEX.fullmatch(rid):
-        out.append(Violation(
-            rule="id-format",
-            message=(
-                f"id '{rid}' does not match the canonical "
-                f"{ID_LENGTH}-char alphabet [{ALPHABET}]"
-            ),
-            line=line,
-            id=rid,
-        ))
+        is_legacy = False
+        if LEGACY_ID_LENGTH > 0:
+            legacy_regex = re.compile(
+                r"^" + "[" + ALPHABET + r"]" + "{" + str(LEGACY_ID_LENGTH) + "}$"
+            )
+            if legacy_regex.fullmatch(rid):
+                out.append(Violation(
+                    rule="id-legacy-length",
+                    message=(
+                        "id '" + rid + "' uses legacy " + str(LEGACY_ID_LENGTH)
+                        + "-char length (deprecated, mint " + str(ID_LENGTH)
+                        + "-char going forward)"
+                    ),
+                    line=line,
+                    id=rid,
+                ))
+                is_legacy = True
+        if not is_legacy:
+            out.append(Violation(
+                rule="id-format",
+                message=(
+                    "id '" + rid + "' does not match the canonical "
+                    + str(ID_LENGTH) + "-char alphabet [" + ALPHABET + "]"
+                ),
+                line=line,
+                id=rid,
+            ))
 
     # Status enum.
     status = (row.get("status") or "").strip()
@@ -127,8 +143,8 @@ def validate_row(row: dict[str, str], line: int | None = None) -> list[Violation
         out.append(Violation(
             rule="status-enum",
             message=(
-                f"status '{status}' not in "
-                f"{{{', '.join(sorted(STATUS_VALUES))}}}"
+                "status '" + status + "' not in "
+                + "{" + ", ".join(sorted(STATUS_VALUES)) + "}"
             ),
             line=line,
             id=rid or None,
@@ -141,7 +157,7 @@ def validate_row(row: dict[str, str], line: int | None = None) -> list[Violation
             if must_be_set and not value:
                 out.append(Violation(
                     rule="status-field-required",
-                    message=f"status '{status}' requires non-empty '{field}'",
+                    message="status '" + status + "' requires non-empty '" + field + "'",
                     line=line,
                     id=rid or None,
                 ))
@@ -149,8 +165,8 @@ def validate_row(row: dict[str, str], line: int | None = None) -> list[Violation
                 out.append(Violation(
                     rule="status-field-forbidden",
                     message=(
-                        f"status '{status}' must have empty '{field}' "
-                        f"(got '{value}')"
+                        "status '" + status + "' must have empty '" + field + "' "
+                        "(got '" + value + "')"
                     ),
                     line=line,
                     id=rid or None,

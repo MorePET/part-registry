@@ -62,8 +62,8 @@ function saveQueue(q: QueuedBind[]): void {
 
 function fmtId(id: string): string {
   // 4-4-4 grouping for display; underlying value stays canonical.
-  if (id.length !== 12) return id;
-  return `${id.slice(0, 4)}-${id.slice(4, 8)}-${id.slice(8, 12)}`;
+  if (id.length < 12) return id;
+  return `${id.slice(0, 4)}-${id.slice(4, 8)}-${id.slice(8, 12)}${id.length > 12 ? '-' + id.slice(12) : ''}`;
 }
 
 export const bindTab: Tab = {
@@ -82,7 +82,7 @@ function buildUI(ctx: AppContext): HTMLElement {
     el(
       "p",
       { class: "muted" },
-      "Scan a QR (camera icon in the empty row) or paste a 12-char ID, fill the metadata, queue. Submit-as-PR is stubbed for the spike (issue #5); the queue is real and persists across reloads.",
+      "Scan a QR (camera icon in the empty row) or paste an ID, fill the metadata, queue. Submit-as-PR is stubbed for the spike (issue #5); the queue is real and persists across reloads.",
     ),
   );
 
@@ -195,7 +195,7 @@ function renderEntryRow(ctx: AppContext, onAdd: () => void): HTMLElement {
   const tr = el("tr", { class: "entry-row" });
   const idInput = input({
     type: "text",
-    placeholder: "12-char ID",
+    placeholder: "ID (14-char)",
     autocapitalize: "characters",
   });
   const scanBtn = button({ class: "icon-only", title: "Scan QR" }, icon("camera"));
@@ -242,7 +242,7 @@ function renderEntryRow(ctx: AppContext, onAdd: () => void): HTMLElement {
   addBtn.addEventListener("click", () => {
     const id = idInput.value.trim().toUpperCase().replace(/-/g, "");
     if (!ID_REGEX.test(id)) {
-      alert("ID must be 12 chars from the canonical alphabet.");
+      alert("ID must be 14 chars from the canonical alphabet.");
       return;
     }
     const existing = ctx.registry.findById(id);

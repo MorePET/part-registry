@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+  width="275mm" height="52mm"
+  viewBox="0 0 275 52">
+<style>
+  .title { font: 700 2.5mm sans-serif; fill: #222; }
+  .label { font: 600 1.8mm sans-serif; fill: #666; }
+  .meta  { font: 500 1.3mm sans-serif; fill: #999; }
+  .panel { fill: #fafafa; stroke: #ddd; stroke-width: 0.2; }
+</style>
+<text x="137.5" y="4" class="title" text-anchor="middle">size=8mm format comparison</text>
+<rect x="5" y="7" width="40" height="42" class="panel"/>
+<text x="25.0" y="10" class="label" text-anchor="middle">2/2</text>
+<text x="25.0" y="10.163636363636364" font-family="Consolas, monospace" font-weight="bold" font-size="3.345" text-anchor="middle" fill="#000">K7</text>
+<text x="25.0" y="14.17818181818182" font-family="Consolas, monospace" font-weight="bold" font-size="3.345" text-anchor="middle" fill="#000">M3</text>
+<text x="25.0" y="47.5" class="meta" text-anchor="middle">font=3.35mm util=0.385</text>
+<rect x="50" y="7" width="40" height="42" class="panel"/>
+<text x="70.0" y="10" class="label" text-anchor="middle">3/3</text>
+<text x="70.0" y="10.163636363636364" font-family="Consolas, monospace" font-weight="bold" font-size="3.345" text-anchor="middle" fill="#000">K7M</text>
+<text x="70.0" y="14.17818181818182" font-family="Consolas, monospace" font-weight="bold" font-size="3.345" text-anchor="middle" fill="#000">3PQ</text>
+<text x="70.0" y="47.5" class="meta" text-anchor="middle">font=3.35mm util=0.577</text>
+<rect x="95" y="7" width="40" height="42" class="panel"/>
+<text x="115.0" y="10" class="label" text-anchor="middle">4/4</text>
+<text x="115.0" y="10.163636363636364" font-family="Consolas, monospace" font-weight="bold" font-size="3.345" text-anchor="middle" fill="#000">K7M3</text>
+<text x="115.0" y="14.17818181818182" font-family="Consolas, monospace" font-weight="bold" font-size="3.345" text-anchor="middle" fill="#000">PQ9R</text>
+<text x="115.0" y="47.5" class="meta" text-anchor="middle">font=3.35mm util=0.769</text>
+<rect x="140" y="7" width="40" height="42" class="panel"/>
+<text x="160.0" y="10" class="label" text-anchor="middle">3/3/3</text>
+<text x="160.0" y="9.16" font-family="Consolas, monospace" font-weight="bold" font-size="2.165" text-anchor="middle" fill="#000">K7M</text>
+<text x="160.0" y="11.75764705882353" font-family="Consolas, monospace" font-weight="bold" font-size="2.165" text-anchor="middle" fill="#000">3PQ</text>
+<text x="160.0" y="14.355294117647059" font-family="Consolas, monospace" font-weight="bold" font-size="2.165" text-anchor="middle" fill="#000">9RT</text>
+<text x="160.0" y="47.5" class="meta" text-anchor="middle">font=2.16mm util=0.362</text>
+<rect x="185" y="7" width="40" height="42" class="panel"/>
+<text x="205.0" y="10" class="label" text-anchor="middle">4/4/4</text>
+<text x="205.0" y="9.16" font-family="Consolas, monospace" font-weight="bold" font-size="2.165" text-anchor="middle" fill="#000">K7M3</text>
+<text x="205.0" y="11.75764705882353" font-family="Consolas, monospace" font-weight="bold" font-size="2.165" text-anchor="middle" fill="#000">PQ9R</text>
+<text x="205.0" y="14.355294117647059" font-family="Consolas, monospace" font-weight="bold" font-size="2.165" text-anchor="middle" fill="#000">T5VA</text>
+<text x="205.0" y="47.5" class="meta" text-anchor="middle">font=2.16mm util=0.483</text>
+<rect x="230" y="7" width="40" height="42" class="panel"/>
+<text x="250.0" y="10" class="label" text-anchor="middle">5/5/4</text>
+<text x="250.0" y="9.16" font-family="Consolas, monospace" font-weight="bold" font-size="2.165" text-anchor="middle" fill="#000">K7M3P</text>
+<text x="250.0" y="11.75764705882353" font-family="Consolas, monospace" font-weight="bold" font-size="2.165" text-anchor="middle" fill="#000">Q9RT5</text>
+<text x="250.0" y="14.355294117647059" font-family="Consolas, monospace" font-weight="bold" font-size="2.165" text-anchor="middle" fill="#000">VAXY</text>
+<text x="250.0" y="47.5" class="meta" text-anchor="middle">font=2.16mm util=0.564</text>
+</svg>

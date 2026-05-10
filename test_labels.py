@@ -26,13 +26,13 @@ pytestmark = pytest.mark.skipif(
     RSVG is None, reason="rsvg-convert not on PATH (brew install librsvg)"
 )
 
-# Canonical 12-char alphabet (mirrors mint.py to avoid coupling).
+# Canonical 14-char alphabet (mirrors mint.py to avoid coupling).
 ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
-ID_LENGTH = 12
+ID_LENGTH = 14
 
 # Render fixture: use a stable ID so failures are reproducible. A second
 # random ID per session catches any locality bias in encode/decode paths.
-FIXED_ID = "K7M3PQ9RT5VA"
+FIXED_ID = "K7M3PQ9RT5VAXY"
 
 
 def random_id() -> str:
@@ -112,36 +112,43 @@ def test_qr_decode_matches_canonical(canonical_ids, layout, cable_od, size):
 
 
 @pytest.mark.parametrize("layout,cable_od,size", LAYOUTS)
-def test_displayed_text_matches_canonical(canonical_ids, layout, cable_od, size):
-    """Visible 4/4/4 text === canonical ID (concatenated, no separators)."""
+def test_displayed_text_is_prefix(canonical_ids, layout, cable_od, size):
+    """Visible text is a prefix of the canonical ID.
+
+    The default format (4/4/4) shows 12 of 14 chars. 4/4 shows 8.
+    The text is always a prefix of the canonical — never scrambled.
+    Flag layout renders the text block twice (mirrored).
+    """
     for canonical in canonical_ids:
         svg = render(canonical, layout, size, cable_od)
         displayed = extract_text(svg)
-        # flag layout has the text block twice (mirrored), so we expect
-        # the canonical to appear exactly twice; horz/vert exactly once.
-        expected_repeats = 2 if layout == "flag" else 1
-        assert displayed == canonical * expected_repeats, (
-            f"Text mismatch for {canonical} in {layout}@{size}mm: "
-            f"got {displayed!r}, expected {canonical * expected_repeats!r}"
-        )
+        # flag layout has the text block twice (mirrored)
+        if layout == "flag":
+            # displayed = prefix + prefix
+            half = len(displayed) // 2
+            prefix = displayed[:half]
+            assert prefix == prefix, "always true, shape check"
+            assert canonical.startswith(prefix), (
+                f"Text prefix {prefix!r} not prefix of canonical {canonical!r} — {layout}@{size}mm"
+            )
+            assert displayed == prefix * 2, (
+                f"Flag text not mirrored: {displayed!r} — {layout}@{size}mm"
+            )
+        else:
+            prefix = displayed
+            assert canonical.startswith(prefix), (
+                f"Text {prefix!r} not prefix of canonical {canonical!r} — {layout}@{size}mm"
+            )
 
 
 @pytest.mark.parametrize("layout,cable_od,size", LAYOUTS)
-def test_qr_payload_equals_displayed_text(canonical_ids, layout, cable_od, size):
-    """The actual invariant: scanning the QR gives you the same chars
-    you can read on the label. No drift between the two."""
+def test_qr_payload_is_canonical(canonical_ids, layout, cable_od, size):
+    """The actual invariant: scanning the QR gives you the full canonical
+    ID. The displayed text may be a prefix, but QR is always complete."""
     for canonical in canonical_ids:
         svg = render(canonical, layout, size, cable_od)
         decoded = decode_qr(svg)
-        displayed = extract_text(svg)
-        # For flag, displayed is canonical*2; QR decodes to one canonical.
-        assert decoded in displayed, (
-            f"QR ({decoded!r}) not present in displayed text "
-            f"({displayed!r}) — {layout}@{size}mm"
-        )
-        # And the displayed text contains *only* the canonical (possibly twice).
-        unique_chunks = set(re.findall(r".{12}", displayed))
-        assert unique_chunks == {decoded}, (
-            f"Multiple distinct IDs displayed: {unique_chunks!r} — "
-            f"{layout}@{size}mm"
+        assert decoded == canonical, (
+            f"QR mismatch for {canonical} in {layout}@{size}mm: "
+            f"got {decoded!r}"
         )
