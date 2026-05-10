@@ -157,9 +157,37 @@ of ADR-012/013:
   required by this ADR lives in the Rust `validators` crate and is
   exposed to both surfaces through the same trait.
 
+## Corrections
+
+> **2026-05-10:** original draft (Status: Proposed, dated
+> 2026-05-08) listed the FE-preflight implementation as an open
+> question between Pyodide-loaded Python validators and a
+> TypeScript port. The architectural reset captured in
+> [LOG.md](LOG.md) §"2026-05-10 — Architectural reset" resolved
+> that question by moving the entire core to Rust (per
+> [ADR-017](ADR-017-rust-core-ports-adapters.md)). The validators
+> are now a Rust crate compiled to native (CI) + WebAssembly (FE)
+> from one source. The original open-question bullet at the end
+> of §"Open questions / supersession triggers" is preserved
+> struck-through; the resolution note immediately follows it. The
+> Date field at the top of the document is intentionally retained
+> at `2026-05-08` (the date of the original Decision) per
+> [METHODOLOGY.md](METHODOLOGY.md) §"Correction protocol"; the
+> 2026-05-10 update is recorded here, not by silent revision.
+
 ## References
 
 - [ADR-012 — Part identification](ADR-012-part-identification.md)
 - [ADR-013 — Parts registry web app](ADR-013-parts-registry-web-app.md)
 - [ADR-014 — Web app architecture](ADR-014-web-app-architecture.md)
 - [ADR-015 — Print event log](ADR-015-print-event-log.md)
+- [ADR-017 — Rust core + ports/adapters](ADR-017-rust-core-ports-adapters.md)
+  — resolves this ADR's open question by moving validators to Rust
+- [ADR-018 — Storage as a port](ADR-018-storage-port.md) — mutations
+  route through ProposalSink, never direct writes
+- [ADR-020 — Identity & authorization as a port](ADR-020-identity-authorization-port.md)
+  — Authorizer takes `&Operator + &Action`, where `Action` variants
+  match this ADR's semantic-change-class vocabulary
+- [ADR-023 — Threat model + crypto-MVP scope](ADR-023-threat-model-and-crypto-mvp-scope.md)
+  — the regulatory-finding consequence tier this ADR's policy
+  engine defends against

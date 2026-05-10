@@ -116,8 +116,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use time::OffsetDateTime;
 
-use crate::identity::Operator;
-use crate::signing::{Signature, Hash};
+use crate::domain::{Operator, Hash};   // Operator: ADR-020; Hash: ADR-018 (lives in domain)
+use crate::signing::Signature;          // Signature variant set: ADR-024
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuditEntry {

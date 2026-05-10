@@ -70,7 +70,7 @@ pressures force a trait rather than a hardcoded GitHub-PR call:
 ## Decision
 
 Mutations are a port. The Rust workspace declares a `ProposalSink`
-trait in `crates/proposal/src/lib.rs` and ships exactly one adapter
+trait in `crates/transport/src/lib.rs` and ships exactly one adapter
 for the MVP: `crates/transport_github_pr/`, which implements
 `ProposalSink` by opening pull requests against the data repository
 via the GitHub REST API (using `octocrab` or equivalent — the
@@ -88,7 +88,7 @@ authority (CI + reviewers), not to the mutation pipeline.
 ### Trait shape
 
 ```rust
-// crates/proposal/src/lib.rs
+// crates/transport/src/lib.rs
 
 use crate::types::{
     Diff, ChangeClass, ProposalStatus, ProposalRef,
@@ -435,7 +435,7 @@ This ADR does **not** commit the project to:
   §"CI is the policy authority", §"Auto-merge / requires-review /
   blocked classes"
 - [ADR-017 — Rust core + ports/adapters](ADR-017-rust-core-ports-adapters.md)
-  §"Workspace shape" (`crates/proposal/`,
+  §"Workspace shape" (`crates/transport/`,
   `crates/transport_github_pr/`), §"Strangler-fig migration
   sequence" step 8
 - [ADR-018 — Storage as a port](ADR-018-storage-port.md)
@@ -447,8 +447,8 @@ This ADR does **not** commit the project to:
   (audit log cites `ProposalRef::url`)
 - [ADR-023 — Threat model + crypto-MVP scope](ADR-023-threat-model-and-crypto-mvp-scope.md)
   §"Schema forward-compatibility" (`signatures` round-trip),
-  §"Defer-signing offline mode" (`transport_local_branch`
-  trigger)
+  §"Offline behaviour (defer-signing, Option A)"
+  (`transport_local_branch` trigger)
 - [ADR-024 — Cryptographic baseline (MVP)](ADR-024-crypto-baseline-mvp.md)
   (`Signature` variants, `GitCommit` MVP shape)
 - [ADR-027 — Port conformance + forward-compatibility tests](ADR-027-port-conformance-tests.md)

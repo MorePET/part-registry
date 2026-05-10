@@ -135,6 +135,42 @@ Explicitly **deferred** (with re-open triggers below):
 - WebAuthn / passkey-bound action signing
 - Cosign-signed binary artifacts beyond signed git tags
 
+### Offline behaviour (defer-signing, Option A)
+
+The threat-model interview surfaced a fourth UX dimension after the
+matrix above: connectivity. Operators may need to mutate state
+(scan, queue a bind, propose an edit) without network access — the
+git+GH workflow elegantly supports later sync, and the MVP
+preserves that property.
+
+The chosen offline policy is **Option A — defer signing**. Mutations
+made offline are recorded with the operator's claimed identity and
+claimed timestamp in a local queue; they are signed against the
+operator's then-current OIDC identity at sync time and submitted as
+a single proposal. The audit log records both `claimed_at` (operator
+assertion) and `signed_at` (sync time), making the offline window
+explicit and auditor-defensible.
+
+Two alternatives were rejected for MVP:
+
+- **Option B — pre-fetched ephemeral certs** (operator pre-requests
+  N future-valid Fulcio certs before going offline). Eliminates the
+  backdating-window concern, but requires Sigstore infrastructure
+  not in MVP scope and depends on Fulcio's future-dated cert support
+  (non-standard).
+- **Option D — strict online-only mutations.** Cleanest audit story
+  but operationally annoying when wifi is unreliable; forces
+  operators to "step outside" to sign.
+
+This subsection is the formal referent for downstream ADRs that
+mention "ADR-023 offline mode" or "defer-signing offline mode" — see
+ADR-019 §"Forward-compatibility" (`transport_local_branch` future
+adapter) and ADR-020 §"Forward-compatibility" (`identity_offline_claim`
+future adapter). Option A is recoverable as a bolt-on: when trigger
+T2 fires and Sigstore activates, Option B can replace Option A
+without changing the audit-log schema (the existing `claimed_at`
+field gets a `cert_validity_window` complement).
+
 ## Rationale
 
 The matrix in the Decision section directly maps each cell of the

@@ -180,7 +180,7 @@ pub struct Part {
 pub struct AuditEntry {
     pub id: AuditId,
     pub timestamp: OffsetDateTime,
-    pub actor: Operator,        // per ADR-022
+    pub actor: Operator,        // type defined by ADR-020; recorded per ADR-022
     pub action: Action,
     pub subject: SubjectRef,
     pub source: AuditSource,    // per ADR-022 — IdP attestation provenance
