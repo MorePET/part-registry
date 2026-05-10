@@ -80,10 +80,7 @@ pub trait Repository: Send + Sync {
     fn list_audit_events(&self, filter: &AuditFilter) -> Result<Vec<AuditEntry>, RepoError>;
 
     // Read: print events (per ADR-015)
-    fn list_print_events(
-        &self,
-        filter: &PrintEventFilter,
-    ) -> Result<Vec<PrintEvent>, RepoError>;
+    fn list_print_events(&self, filter: &PrintEventFilter) -> Result<Vec<PrintEvent>, RepoError>;
 
     // Append-only side effects.
     fn append_audit_event(&self, ev: AuditEntry) -> Result<(), RepoError>;

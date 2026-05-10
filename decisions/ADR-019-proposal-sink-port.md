@@ -12,7 +12,7 @@
   pattern), ADR-016 (PR-diff policy enforcement — CI is the policy
   authority), ADR-017 (Rust core + ports/adapters — workspace shape),
   ADR-018 (Storage port — read + audit-append only; mutations route
-  here), ADR-020 (Operator identity), ADR-022 (Observability — audit
+  here), ADR-020 (Identity & authorization as a port), ADR-022 (Observability — audit
   trail), ADR-023 (Threat model + crypto-MVP scope — `signatures`
   forward-compat), ADR-024 (Cryptographic baseline), ADR-027 (Port
   conformance + parity tests)
@@ -441,7 +441,7 @@ This ADR does **not** commit the project to:
 - [ADR-018 — Storage as a port](ADR-018-storage-port.md)
   §"Why read + audit-append only" (mutations route through
   `ProposalSink`)
-- [ADR-020 — Operator identity](ADR-020-operator-identity.md)
+- [ADR-020 — Identity & authorization as a port](ADR-020-identity-authorization-port.md)
   (`Operator` provenance, IdP claims at session open)
 - [ADR-022 — Observability: tracing + audit trail](ADR-022-observability-tracing-audit.md)
   (audit log cites `ProposalRef::url`)

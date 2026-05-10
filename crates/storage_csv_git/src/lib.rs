@@ -40,19 +40,13 @@ impl Repository for CsvGitRepository {
         ))
     }
 
-    fn list_audit_events(
-        &self,
-        _filter: &AuditFilter,
-    ) -> Result<Vec<AuditEntry>, RepoError> {
+    fn list_audit_events(&self, _filter: &AuditFilter) -> Result<Vec<AuditEntry>, RepoError> {
         Err(RepoError::Other(
             "CsvGitRepository::list_audit_events not implemented (foundation scaffold)".into(),
         ))
     }
 
-    fn list_print_events(
-        &self,
-        _filter: &PrintEventFilter,
-    ) -> Result<Vec<PrintEvent>, RepoError> {
+    fn list_print_events(&self, _filter: &PrintEventFilter) -> Result<Vec<PrintEvent>, RepoError> {
         Err(RepoError::Other(
             "CsvGitRepository::list_print_events not implemented (foundation scaffold)".into(),
         ))
