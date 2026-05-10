@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+  width="205mm" height="48mm"
+  viewBox="0 0 205 48">
+<style>
+  .title { font: 700 2.5mm sans-serif; fill: #222; }
+  .label { font: 600 1.8mm sans-serif; fill: #666; }
+  .meta  { font: 500 1.3mm sans-serif; fill: #999; }
+  .panel { fill: #fafafa; stroke: #ddd; stroke-width: 0.2; }
+</style>
+<text x="102.5" y="4" class="title" text-anchor="middle">size=6mm 4/4 font comparison</text>
+<rect x="5" y="7" width="35" height="38" class="panel"/>
+<text x="22.5" y="10" class="label" text-anchor="middle">Courier New</text>
+<text x="22.5" y="9.372727272727273" font-family="Courier New, Courier, monospace" font-weight="bold" font-size="2.509" text-anchor="middle" fill="#000">K7M3</text>
+<text x="22.5" y="12.383636363636365" font-family="Courier New, Courier, monospace" font-weight="bold" font-size="2.509" text-anchor="middle" fill="#000">PQ9R</text>
+<text x="22.5" y="43.5" class="meta" text-anchor="middle">font=2.51mm util=0.867</text>
+<rect x="45" y="7" width="35" height="38" class="panel"/>
+<text x="62.5" y="10" class="label" text-anchor="middle">Consolas</text>
+<text x="62.5" y="9.372727272727273" font-family="Consolas, monospace" font-weight="bold" font-size="2.509" text-anchor="middle" fill="#000">K7M3</text>
+<text x="62.5" y="12.383636363636365" font-family="Consolas, monospace" font-weight="bold" font-size="2.509" text-anchor="middle" fill="#000">PQ9R</text>
+<text x="62.5" y="43.5" class="meta" text-anchor="middle">font=2.51mm util=0.769</text>
+<rect x="85" y="7" width="35" height="38" class="panel"/>
+<text x="102.5" y="10" class="label" text-anchor="middle">SF Mono</text>
+<text x="102.5" y="9.372727272727273" font-family="SF Mono, Menlo, monospace" font-weight="bold" font-size="2.509" text-anchor="middle" fill="#000">K7M3</text>
+<text x="102.5" y="12.383636363636365" font-family="SF Mono, Menlo, monospace" font-weight="bold" font-size="2.509" text-anchor="middle" fill="#000">PQ9R</text>
+<text x="102.5" y="43.5" class="meta" text-anchor="middle">font=2.51mm util=0.741</text>
+<rect x="125" y="7" width="35" height="38" class="panel"/>
+<text x="142.5" y="10" class="label" text-anchor="middle">IBM Plex Mono</text>
+<text x="142.5" y="9.372727272727273" font-family="IBM Plex Mono, monospace" font-weight="bold" font-size="2.509" text-anchor="middle" fill="#000">K7M3</text>
+<text x="142.5" y="12.383636363636365" font-family="IBM Plex Mono, monospace" font-weight="bold" font-size="2.509" text-anchor="middle" fill="#000">PQ9R</text>
+<text x="142.5" y="43.5" class="meta" text-anchor="middle">font=2.51mm util=0.755</text>
+<rect x="165" y="7" width="35" height="38" class="panel"/>
+<text x="182.5" y="10" class="label" text-anchor="middle">Roboto Mono</text>
+<text x="182.5" y="9.372727272727273" font-family="Roboto Mono, monospace" font-weight="bold" font-size="2.509" text-anchor="middle" fill="#000">K7M3</text>
+<text x="182.5" y="12.383636363636365" font-family="Roboto Mono, monospace" font-weight="bold" font-size="2.509" text-anchor="middle" fill="#000">PQ9R</text>
+<text x="182.5" y="43.5" class="meta" text-anchor="middle">font=2.51mm util=0.727</text>
+</svg>

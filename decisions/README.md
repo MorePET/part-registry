@@ -47,3 +47,4 @@ _(none yet — ADR-012 and ADR-013 are Proposed pending team review.)_
 - [ADR-013 — Parts registry web app: GH Pages + WASM DuckDB + PR-driven binds](ADR-013-parts-registry-web-app.md)
 - [ADR-014 — Web app architecture: extension interfaces, SSOT, plugin model](ADR-014-web-app-architecture.md)
 - [ADR-015 — Print event log: non-destructive audit trail of every label print](ADR-015-print-event-log.md)
+- [ADR-016 — PR-diff-based policy enforcement for registry changes](ADR-016-pr-diff-policy-enforcement.md)

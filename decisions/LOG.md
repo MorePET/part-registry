@@ -3,6 +3,59 @@
 Append-only chronological record of decisions for the parts registry.
 Newest entries first.
 
+## 2026-05-08 — PR-diff-based policy enforcement, not FE-declared intent
+
+**Context:** review/approval policy needs to distinguish routine binds
+from destructive actions such as row deletion or voiding. `CODEOWNERS`
+and FE-originated metadata are both insufficient: `CODEOWNERS` is
+path-based only, and FE declarations are not authoritative for CLI or
+manual edits.
+
+**Outcomes:** ADR-016 (PR-diff-based policy enforcement for registry
+changes), Status: Proposed. The architectural rule is:
+
+1. policy is derived from the **git diff in the PR**
+2. CI classifies semantic change types (`row_bind`, `row_edit`,
+   `row_void`, `row_delete`, `header_change`, `bulk_change`, …)
+3. enforcement is CI-side and therefore FE-independent
+
+The FE may still suggest labels or PR body summaries later, but those
+are advisory only. The canonical enforcement point is the diff-aware
+validator/policy engine.
+
+**References:** ADR-016.
+
+## 2026-05-08 — Label format: 14-char canonical, 4/4 display, Consolas font, size-based auto-select
+
+**Context:** ADR-012 specified 12-char IDs displayed as 4/4/4 in Courier
+monospace. Small prints (≤ 8mm) showed text at ~1.3mm font — below the
+"readable" threshold for thermal printing. The original "always show all 12"
+was conservative; the design didn't account for measured font metrics or
+the collision triage UX that the web app provides.
+
+**Outcomes:** ADR-012 updated (Status: Proposed). Key changes:
+
+1. **Canonical ID: 12 → 14 chars.** Micro QR M4 at error M holds 14
+   alphanumeric chars (2-char headroom was unused). Same QR footprint
+   (17×17 modules). Collision space 32¹⁴ ≈ 1.2×10²¹.
+2. **Display: 4/4/4 → 4/4 by default.** 8-char prefix displayed as
+   2 rows of 4. 2-row formats give ~35% bigger font than 3-row.
+   Collisions at 8 chars are negligible (P ≈ 0.00005 at 10k parts)
+   and triaged by operator context + QR scan.
+3. **Font: Courier → Consolas.** Measured via Pillow textbbox: Consolas
+   has highest x-height ratio (0.56), true monospace advance (0.55,
+   zero variance across the 32-char alphabet). Courier New's wider
+   chars (0.62 advance) cause horizontal overflow at 4/4 on small sizes.
+4. **Size-based format selection:** 4/4 for sizes ≤ 8mm, 4/4/4 for ≥ 10mm,
+   5/5/4 for ≥ 12mm. Warning system when chosen format is sub-optimal.
+5. **2/2 and 3/3 formats dropped** — strictly dominated by 4/4 (same font,
+   fewer chars).
+
+Measurement script at `tools/layout_analysis.py` documents the full
+analysis: font metrics, horizontal fit, utilization, legibility tiers.
+
+**References:** ADR-012, issue #22, `tools/layout_analysis.py`.
+
 ## 2026-05-08 — Print event log (CLI side)
 
 **Context:** issue #12 — a printed-but-unbound label is a real

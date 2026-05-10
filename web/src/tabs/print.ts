@@ -250,7 +250,7 @@ function buildUI(ctx: AppContext): HTMLElement {
           el(
             "div",
             { class: "muted small" },
-            `${item.id} · ${item.layoutId} · ${item.size}mm × ${item.copies}`,
+            `${fmtId(item.id)} · ${item.layoutId} · ${item.size}mm × ${item.copies}`,
           ),
         );
         previewArea.append(wrap);
@@ -644,7 +644,7 @@ function renderEntryRow(ctx: AppContext, onAdd: () => void): HTMLElement {
   const tr = el("tr", { class: "entry-row" });
   const idIn = input({
     type: "text",
-    placeholder: "12-char ID",
+    placeholder: "ID (14-char)",
     autocapitalize: "characters",
   });
   const scanBtn = button({ class: "icon-only", title: "Scan QR" }, icon("camera"));
@@ -689,8 +689,8 @@ function renderEntryRow(ctx: AppContext, onAdd: () => void): HTMLElement {
   const addBtn = button({ class: "icon-only primary", title: "Add to plan" }, icon("plus"));
   addBtn.addEventListener("click", () => {
     const id = idIn.value.trim().toUpperCase().replace(/-/g, "");
-    if (id.length !== 12) {
-      alert("ID must be 12 characters.");
+    if (id.length !== 14) {
+      alert("ID must be 14 characters.");
       return;
     }
     const layout = getLayout(layoutSel.value);
@@ -713,7 +713,7 @@ function renderEntryRow(ctx: AppContext, onAdd: () => void): HTMLElement {
   // block — operator may be adding an ID that hasn't synced yet.
   idIn.addEventListener("blur", () => {
     const id = idIn.value.trim().toUpperCase().replace(/-/g, "");
-    if (id.length !== 12) return;
+    if (id.length !== 14) return;
     if (!ctx.registry.findById(id)) {
       idIn.title = `${id} is not in the loaded registry.`;
       idIn.style.borderColor = "var(--warn)";
@@ -727,8 +727,8 @@ function renderEntryRow(ctx: AppContext, onAdd: () => void): HTMLElement {
 }
 
 function fmtId(id: string): string {
-  if (id.length !== 12) return id;
-  return `${id.slice(0, 4)}-${id.slice(4, 8)}-${id.slice(8, 12)}`;
+  if (id.length < 8) return id;
+  return `${id.slice(0, 4)}-${id.slice(4, 8)}`;
 }
 
 // Open a print-only window with the HTML produced by the active output

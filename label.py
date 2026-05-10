@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render SVG labels for IDs already in the registry.
 
-A label is two equal-size square blocks: QR + 4/4/4 text.
+A label is two equal-size square blocks: QR + text.
 
     vert  — QR on top of text   (size × 2*size, aspect 1:2)
     horz  — QR left of text     (2*size × size, aspect 2:1)
@@ -9,10 +9,11 @@ A label is two equal-size square blocks: QR + 4/4/4 text.
 
 Pick which IDs to render with --id, --batch, or --status (combinable).
 Pick geometry with --size <mm> or --tape pt-N.
+Pick text format with --format (default: auto by size).
 
-    uv run system-design/parts/label.py --batch B-2026-05-sdmd --layout horz
-    uv run system-design/parts/label.py --id K7M3PQ9RT5VA --layout vert --size 8
-    uv run system-design/parts/label.py --status unbound --layout flag --size 11 --cable-od 6
+    uv run label.py --batch B-2026-05-sdmd --layout horz
+    uv run label.py --id K7M3PQ9RT5VAXY --layout vert --size 8
+    uv run label.py --status unbound --layout flag --size 11 --cable-od 6
 
 See ADR-012 for the scheme.
 """
@@ -68,9 +69,27 @@ QR_BORDER_MICRO = 2
 # Backwards-compat alias — older callers reference QR_BORDER_MODULES.
 QR_BORDER_MODULES = QR_BORDER_STANDARD
 
+# --- Text formats ---
+# name → [chars_per_row, ...]
+FORMATS = {
+    "4/4":   [4, 4],       # 8 chars, 2 rows
+    "4/4/4": [4, 4, 4],    # 12 chars, 3 rows
+    "5/5/4": [5, 5, 4],    # 14 chars, 3 rows (full canonical)
+}
 
-def four_four_four(canonical: str) -> tuple[str, str, str]:
-    return canonical[0:4], canonical[4:8], canonical[8:12]
+# Font family string for SVG
+FONT_FAMILY = "Consolas, monospace"
+
+
+def split_format(canonical: str, fmt: str) -> tuple[str, ...]:
+    """Split a canonical ID into rows for the given format."""
+    chars_per_row = FORMATS[fmt]
+    rows: list[str] = []
+    idx = 0
+    for n in chars_per_row:
+        rows.append(canonical[idx:idx + n])
+        idx += n
+    return tuple(rows)
 
 
 # ---------- SVG primitives (mm-native) ----------
@@ -87,14 +106,14 @@ def svg_wrap(w_mm: float, h_mm: float, body: str) -> str:
 def qr_block(canonical: str, x: float, y: float, size: float, *, micro: bool = False) -> str:
     """Render the QR matrix into a `size × size` square.
 
-    micro=False  → Standard QR (V1 for our 12-char payload, 21×21 modules,
+    micro=False  → Standard QR (V1 for our payload, 21×21 modules,
                     4-module quiet zone, 29 modules per side total).
     micro=True   → Micro QR M4 (17×17 modules, 2-module quiet zone,
                     21 modules per side total ≈ 72 % of Standard linear,
                     52 % of Standard area).
 
-    Both modes use error correction "M" (~15 %). The 12-char alphanumeric
-    payload fits M4 at error M with a one-char margin.
+    Both modes use error correction "M" (~15 %). The 14-char alphanumeric
+    payload fits Micro QR M4 at error M.
     """
     matrix = segno.make(canonical, error="m", micro=micro).matrix
     border = QR_BORDER_MICRO if micro else QR_BORDER_STANDARD
@@ -113,12 +132,21 @@ def qr_block(canonical: str, x: float, y: float, size: float, *, micro: bool = F
     return "\n".join(rects)
 
 
-def text_block(canonical: str, x: float, y: float, size: float) -> str:
-    rows = four_four_four(canonical)
-    # 3 rows, tighter inter-row gap (0.2*font) lets us push font size up.
-    # Layout solves: 3*font + 2*gap + margins = inner_h, gap = 0.2*font.
+def text_block(canonical: str, x: float, y: float, size: float, *, fmt: str = "4/4/4") -> str:
+    """Render human-readable text rows into a `size × size` square.
+
+    Font size is computed from vertical constraint:
+      inner_h = size * 0.92
+      n_rows * font + (n_rows - 1) * 0.2 * font = inner_h
+      → font = inner_h / (n_rows + 0.2 * (n_rows - 1))
+
+    Consolas is true monospace at 0.55 advance ratio — 4/4 format
+    fills the square exactly with zero horizontal margin.
+    """
+    rows = split_format(canonical, fmt)
+    n_rows = len(rows)
     inner_h = size * 0.92
-    font = inner_h / 3.4
+    font = inner_h / (n_rows + 0.2 * (n_rows - 1))
     gap = font * 0.2
     cx = x + size / 2
     y0 = y + (size - inner_h) / 2 + font * 0.85
@@ -128,45 +156,88 @@ def text_block(canonical: str, x: float, y: float, size: float) -> str:
     # to outline at sub-2 mm sizes.
     return "\n".join(
         f'<text x="{cx:.3f}" y="{y0 + i * (font + gap):.3f}" '
-        f'font-family="Courier New, Courier, monospace" '
+        f'font-family="{FONT_FAMILY}" '
         f'font-weight="bold" font-size="{font:.3f}" '
         f'text-anchor="middle" fill="#000">{row}</text>'
         for i, row in enumerate(rows)
     )
 
 
+# ---------- Format auto-selection ----------
+
+def recommend_format(size: float) -> tuple[str, str | None]:
+    """Return (recommended_format, warning_or_none) for a given size.
+
+    Recommendations based on measured legibility tiers (ADR-012):
+      - < 8mm:  4/4  (2 rows, bigger font, reaches "easy" legibility)
+      - >= 8mm, < 10mm: either is fine, default 4/4
+      - >= 10mm: 4/4/4 or 5/5/4 (3 rows, more chars, still "comfortable"+)
+    """
+    if size < 8:
+        warn = None
+        if size < 5:
+            warn = (
+                "size < 5mm: even 4/4 font < 1.5mm (below 'readable'). "
+                "Consider a larger label."
+            )
+        return "4/4", warn
+    if size < 10:
+        return "4/4", None
+    return "4/4/4", None
+
+
+def check_format_warning(size: float, fmt: str) -> str | None:
+    """Return a warning string if the chosen format is sub-optimal for the size."""
+    if size < 5 and fmt != "4/4":
+        return (
+            f"format {fmt} at {size}mm: font < 1.3mm (below 'readable'). "
+            f"Use --format 4/4 for this size."
+        )
+    if 5 <= size < 8 and fmt != "4/4":
+        return (
+            f"format {fmt} at {size}mm: font < 1.9mm (below 'comfortable'). "
+            f"Consider --format 4/4."
+        )
+    if size >= 10 and fmt == "4/4":
+        return (
+            f"format 4/4 at {size}mm: font > 4mm (overkill, wastes space). "
+            f"Consider --format 4/4/4 or 5/5/4."
+        )
+    return None
+
+
 # ---------- Layouts ----------
 
-def render_vert(canonical: str, size: float, *, micro: bool = False) -> str:
+def render_vert(canonical: str, size: float, *, fmt: str = "4/4/4", micro: bool = False) -> str:
     body = (
         qr_block(canonical, 0, 0, size, micro=micro)
         + "\n"
-        + text_block(canonical, 0, size, size)
+        + text_block(canonical, 0, size, size, fmt=fmt)
     )
     return svg_wrap(size, 2 * size, body)
 
 
-def render_horz(canonical: str, size: float, *, micro: bool = False) -> str:
+def render_horz(canonical: str, size: float, *, fmt: str = "4/4/4", micro: bool = False) -> str:
     body = (
         qr_block(canonical, 0, 0, size, micro=micro)
         + "\n"
-        + text_block(canonical, size, 0, size)
+        + text_block(canonical, size, 0, size, fmt=fmt)
     )
     return svg_wrap(2 * size, size, body)
 
 
-def render_flag(canonical: str, size: float, cable_od_mm: float, *, micro: bool = False) -> str:
+def render_flag(canonical: str, size: float, cable_od_mm: float, *, fmt: str = "4/4/4", micro: bool = False) -> str:
     horz_w = 2 * size
     wrap_w = math.pi * cable_od_mm * 1.1
     W = 2 * horz_w + wrap_w
     left = (
         qr_block(canonical, 0, 0, size, micro=micro)
         + "\n"
-        + text_block(canonical, size, 0, size)
+        + text_block(canonical, size, 0, size, fmt=fmt)
     )
     rx = horz_w + wrap_w
     right = (
-        text_block(canonical, rx, 0, size)
+        text_block(canonical, rx, 0, size, fmt=fmt)
         + "\n"
         + qr_block(canonical, rx + size, 0, size, micro=micro)
     )
@@ -174,7 +245,7 @@ def render_flag(canonical: str, size: float, cable_od_mm: float, *, micro: bool 
         f'<rect x="{horz_w:.3f}" y="0" width="{wrap_w:.3f}" height="{size:.3f}" '
         f'fill="none" stroke="#888" stroke-width="0.1" stroke-dasharray="0.6,0.6"/>\n'
         f'<text x="{horz_w + wrap_w/2:.3f}" y="{size/2 + 0.5:.3f}" '
-        f'font-family="Courier, monospace" font-size="1.5" '
+        f'font-family="monospace" font-size="1.5" '
         f'text-anchor="middle" fill="#888">wrap d{cable_od_mm:g}</text>'
     )
     return svg_wrap(W, size, "\n".join([left, wrap, right]))
@@ -184,18 +255,19 @@ def render(
     canonical: str,
     layout: str,
     size: float,
-    cable_od_mm: float | None,
+    cable_od_mm: float | None = None,
     *,
+    fmt: str = "4/4/4",
     micro: bool = False,
 ) -> str:
     if layout == "vert":
-        return render_vert(canonical, size, micro=micro)
+        return render_vert(canonical, size, fmt=fmt, micro=micro)
     if layout == "horz":
-        return render_horz(canonical, size, micro=micro)
+        return render_horz(canonical, size, fmt=fmt, micro=micro)
     if layout == "flag":
         if cable_od_mm is None:
             sys.exit("--layout flag requires --cable-od <mm>")
-        return render_flag(canonical, size, cable_od_mm, micro=micro)
+        return render_flag(canonical, size, cable_od_mm, fmt=fmt, micro=micro)
     sys.exit(f"unknown layout: {layout}")
 
 
@@ -296,7 +368,7 @@ def select_ids(
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--id", action="append", dest="ids",
-                    help="explicit ID (12-char). Repeat for multiple.")
+                    help="explicit ID (14-char). Repeat for multiple.")
     ap.add_argument("--batch", default=None, help="render every ID in this batch")
     ap.add_argument("--status", choices=["unbound", "bound", "void"], default=None,
                     help="render every ID with this status")
@@ -305,6 +377,8 @@ def main() -> None:
                     help=f"short-side size in mm (default {DEFAULT_SIZE_MM})")
     ap.add_argument("--tape", choices=list(TAPE_SIZES), default=None,
                     help="Brother P-touch tape preset (shorthand for --size)")
+    ap.add_argument("--format", choices=["4/4", "4/4/4", "5/5/4", "auto"], default="auto",
+                    help="text format (default: auto by size tier)")
     ap.add_argument("--cable-od", type=float, default=None,
                     help="cable outer diameter in mm (required for --layout flag)")
     ap.add_argument("--out-dir", type=Path, default=None,
@@ -347,6 +421,15 @@ def main() -> None:
         sys.exit("use either --size or --tape, not both")
     size = TAPE_SIZES[args.tape] if args.tape else (args.size or DEFAULT_SIZE_MM)
 
+    # Resolve format: auto-select by size, or use explicit choice
+    if args.format == "auto":
+        fmt, warn = recommend_format(size)
+    else:
+        fmt = args.format
+        warn = check_format_warning(size, fmt)
+    if warn:
+        print(f"info: {warn}", file=sys.stderr)
+
     if not REGISTRY.exists():
         sys.exit(f"no registry at {REGISTRY} — mint some IDs first")
     with REGISTRY.open() as f:
@@ -365,7 +448,7 @@ def main() -> None:
 
     for row in selected:
         nid = row["id"]
-        svg = render(nid, args.layout, size, args.cable_od, micro=args.micro)
+        svg = render(nid, args.layout, size, args.cable_od, fmt=fmt, micro=args.micro)
         (out_dir / f"{nid}.svg").write_text(svg)
 
     if args.log:
@@ -396,7 +479,7 @@ def main() -> None:
     else:
         wrap_w = math.pi * (args.cable_od or 0) * 1.1
         dim = f"{4 * size + wrap_w:.1f} × {size:.1f} mm (wrap {wrap_w:.1f})"
-    print(f"rendered {len(selected)} labels  layout={args.layout}  ({dim})")
+    print(f"rendered {len(selected)} labels  layout={args.layout} format={fmt}  ({dim})")
     print(f"  out: {out_dir}/")
     if args.log:
         print(f"  logged {len(selected)} print event(s) to {PRINT_LOG.name}")

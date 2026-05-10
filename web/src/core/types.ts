@@ -9,11 +9,16 @@
 // Layout doesn't know about tabs.
 
 import type { Registry } from "../registry/registry";
+import type { AppPath } from "../routing/route";
 
 export interface AppContext {
   registry: Registry;
   /** Switch to a tab by id (tab navigation as a primitive). */
   showTab(id: string): void;
+  /** Promote a canonical part id into the current route state / URL. */
+  showPart(id: string): void;
+  /** Current route state derived from the browser location. */
+  getRoute(): AppPath;
   // Future: auth provider, settings store, plugin host, etc.
 }
 

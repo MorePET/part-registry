@@ -17,22 +17,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from registry_contract import (
+    ALPHABET,
+    ID_LENGTH,
+    LEGACY_ID_LENGTH,
+    REGISTRY_FIELDS,
+    STATUS_VALUES as CONTRACT_STATUS_VALUES,
+)
+
 # --- canonical schema ---------------------------------------------------
 
-# Mirror of REGISTRY_FIELDS in mint.py / bind.py. Single source of truth
-# for column order; if these drift, CSV writes desynchronize.
-REGISTRY_FIELDS: list[str] = [
-    "id", "status", "minted_at", "batch", "bound_at",
-    "type", "description", "vendor", "part_number", "location", "notes",
-]
-
-# ADR-012: 12-char nano-id, no-lookalike alphabet (Crockford-style:
-# no 0/O, no 1/I/L).
-ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
-ID_LENGTH = 12
 ID_REGEX = re.compile(rf"^[{ALPHABET}]{{{ID_LENGTH}}}$")
-
-STATUS_VALUES: frozenset[str] = frozenset({"unbound", "bound", "void"})
+STATUS_VALUES: frozenset[str] = frozenset(CONTRACT_STATUS_VALUES)
 
 # Fields that must be non-empty regardless of status.
 REQUIRED_ALWAYS: tuple[str, ...] = ("id", "status", "minted_at", "batch")
@@ -113,15 +109,33 @@ def validate_row(row: dict[str, str], line: int | None = None) -> list[Violation
     # ID alphabet / length. Only checked if `id` is non-empty — otherwise
     # the required-field violation above already covers it.
     if rid and not ID_REGEX.fullmatch(rid):
-        out.append(Violation(
-            rule="id-format",
-            message=(
-                f"id '{rid}' does not match the canonical "
-                f"{ID_LENGTH}-char alphabet [{ALPHABET}]"
-            ),
-            line=line,
-            id=rid,
-        ))
+        is_legacy = False
+        if LEGACY_ID_LENGTH > 0:
+            legacy_regex = re.compile(
+                r"^" + "[" + ALPHABET + r"]" + "{" + str(LEGACY_ID_LENGTH) + "}$"
+            )
+            if legacy_regex.fullmatch(rid):
+                out.append(Violation(
+                    rule="id-legacy-length",
+                    message=(
+                        "id '" + rid + "' uses legacy " + str(LEGACY_ID_LENGTH)
+                        + "-char length (deprecated, mint " + str(ID_LENGTH)
+                        + "-char going forward)"
+                    ),
+                    line=line,
+                    id=rid,
+                ))
+                is_legacy = True
+        if not is_legacy:
+            out.append(Violation(
+                rule="id-format",
+                message=(
+                    "id '" + rid + "' does not match the canonical "
+                    + str(ID_LENGTH) + "-char alphabet [" + ALPHABET + "]"
+                ),
+                line=line,
+                id=rid,
+            ))
 
     # Status enum.
     status = (row.get("status") or "").strip()
@@ -129,8 +143,8 @@ def validate_row(row: dict[str, str], line: int | None = None) -> list[Violation
         out.append(Violation(
             rule="status-enum",
             message=(
-                f"status '{status}' not in "
-                f"{{{', '.join(sorted(STATUS_VALUES))}}}"
+                "status '" + status + "' not in "
+                + "{" + ", ".join(sorted(STATUS_VALUES)) + "}"
             ),
             line=line,
             id=rid or None,
@@ -143,7 +157,7 @@ def validate_row(row: dict[str, str], line: int | None = None) -> list[Violation
             if must_be_set and not value:
                 out.append(Violation(
                     rule="status-field-required",
-                    message=f"status '{status}' requires non-empty '{field}'",
+                    message="status '" + status + "' requires non-empty '" + field + "'",
                     line=line,
                     id=rid or None,
                 ))
@@ -151,8 +165,8 @@ def validate_row(row: dict[str, str], line: int | None = None) -> list[Violation
                 out.append(Violation(
                     rule="status-field-forbidden",
                     message=(
-                        f"status '{status}' must have empty '{field}' "
-                        f"(got '{value}')"
+                        "status '" + status + "' must have empty '" + field + "' "
+                        "(got '" + value + "')"
                     ),
                     line=line,
                     id=rid or None,
