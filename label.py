@@ -103,7 +103,10 @@ def svg_wrap(w_mm: float, h_mm: float, body: str) -> str:
     )
 
 
-def qr_block(canonical: str, x: float, y: float, size: float, *, micro: bool = False) -> str:
+def qr_block(
+    canonical: str, x: float, y: float, size: float,
+    *, micro: bool = False, border: int | None = None,
+) -> str:
     """Render the QR matrix into a `size × size` square.
 
     micro=False  → Standard QR (V1 for our payload, 21×21 modules,
@@ -112,11 +115,18 @@ def qr_block(canonical: str, x: float, y: float, size: float, *, micro: bool = F
                     21 modules per side total ≈ 72 % of Standard linear,
                     52 % of Standard area).
 
+    border=None  → spec quiet zone (4 for Standard, 2 for Micro).
+    border=int   → override the quiet zone in modules. Going below spec
+                    (e.g. 1 for Micro) grows the visible matrix at the
+                    cost of scanner tolerance; safe when the surrounding
+                    layout already provides external whitespace.
+
     Both modes use error correction "M" (~15 %). The 14-char alphanumeric
     payload fits Micro QR M4 at error M.
     """
     matrix = segno.make(canonical, error="m", micro=micro).matrix
-    border = QR_BORDER_MICRO if micro else QR_BORDER_STANDARD
+    if border is None:
+        border = QR_BORDER_MICRO if micro else QR_BORDER_STANDARD
     n_modules = len(matrix) + 2 * border
     module = size / n_modules
     rects = []
@@ -208,30 +218,30 @@ def check_format_warning(size: float, fmt: str) -> str | None:
 
 # ---------- Layouts ----------
 
-def render_vert(canonical: str, size: float, *, fmt: str = "4/4/4", micro: bool = False) -> str:
+def render_vert(canonical: str, size: float, *, fmt: str = "4/4/4", micro: bool = False, border: int | None = None) -> str:
     body = (
-        qr_block(canonical, 0, 0, size, micro=micro)
+        qr_block(canonical, 0, 0, size, micro=micro, border=border)
         + "\n"
         + text_block(canonical, 0, size, size, fmt=fmt)
     )
     return svg_wrap(size, 2 * size, body)
 
 
-def render_horz(canonical: str, size: float, *, fmt: str = "4/4/4", micro: bool = False) -> str:
+def render_horz(canonical: str, size: float, *, fmt: str = "4/4/4", micro: bool = False, border: int | None = None) -> str:
     body = (
-        qr_block(canonical, 0, 0, size, micro=micro)
+        qr_block(canonical, 0, 0, size, micro=micro, border=border)
         + "\n"
         + text_block(canonical, size, 0, size, fmt=fmt)
     )
     return svg_wrap(2 * size, size, body)
 
 
-def render_flag(canonical: str, size: float, cable_od_mm: float, *, fmt: str = "4/4/4", micro: bool = False) -> str:
+def render_flag(canonical: str, size: float, cable_od_mm: float, *, fmt: str = "4/4/4", micro: bool = False, border: int | None = None) -> str:
     horz_w = 2 * size
     wrap_w = math.pi * cable_od_mm * 1.1
     W = 2 * horz_w + wrap_w
     left = (
-        qr_block(canonical, 0, 0, size, micro=micro)
+        qr_block(canonical, 0, 0, size, micro=micro, border=border)
         + "\n"
         + text_block(canonical, size, 0, size, fmt=fmt)
     )
@@ -239,7 +249,7 @@ def render_flag(canonical: str, size: float, cable_od_mm: float, *, fmt: str = "
     right = (
         text_block(canonical, rx, 0, size, fmt=fmt)
         + "\n"
-        + qr_block(canonical, rx + size, 0, size, micro=micro)
+        + qr_block(canonical, rx + size, 0, size, micro=micro, border=border)
     )
     wrap = (
         f'<rect x="{horz_w:.3f}" y="0" width="{wrap_w:.3f}" height="{size:.3f}" '
@@ -259,15 +269,16 @@ def render(
     *,
     fmt: str = "4/4/4",
     micro: bool = False,
+    border: int | None = None,
 ) -> str:
     if layout == "vert":
-        return render_vert(canonical, size, fmt=fmt, micro=micro)
+        return render_vert(canonical, size, fmt=fmt, micro=micro, border=border)
     if layout == "horz":
-        return render_horz(canonical, size, fmt=fmt, micro=micro)
+        return render_horz(canonical, size, fmt=fmt, micro=micro, border=border)
     if layout == "flag":
         if cable_od_mm is None:
             sys.exit("--layout flag requires --cable-od <mm>")
-        return render_flag(canonical, size, cable_od_mm, fmt=fmt, micro=micro)
+        return render_flag(canonical, size, cable_od_mm, fmt=fmt, micro=micro, border=border)
     sys.exit(f"unknown layout: {layout}")
 
 
