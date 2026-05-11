@@ -183,18 +183,22 @@ where
     Ok(())
 }
 
-/// Canonical registry sort key per ADR-013: `(status, id)` —
-/// `unbound` rows first (lexicographically), then `bound`, then
-/// `void`; within a status, ascending by id. We use the `Display`
-/// representation of `PartStatus` so the key matches the byte order
-/// the CSV writer produces.
-pub fn registry_sort_key(p: &Part) -> (String, String) {
-    (p.status.to_string(), p.id.as_str().to_owned())
+/// Canonical registry sort key per ADR-013: ascending by `id`.
+/// Matches the on-disk byte order of `registry.csv` produced by the
+/// Python `mint.py` / `bind.py` / `validators/rules.py` toolchain
+/// (id-only sort). Reviewer note: an earlier draft of this function
+/// used `(status, id)` but that diverged from ADR-013 + Python
+/// parity; aligned 2026-05-11 per PR #39 reviewer (subagent
+/// `a79d4083`).
+pub fn registry_sort_key(p: &Part) -> String {
+    p.id.as_str().to_owned()
 }
 
-/// Canonical print-log sort key per ADR-015: `printed_at`.
-pub fn print_log_sort_key(e: &PrintEvent) -> Timestamp {
-    e.printed_at
+/// Canonical print-log sort key per ADR-015: `(printed_at, id)`.
+/// Timestamp is primary; `id` is the tiebreaker so concurrent prints
+/// of different IDs at the same second produce a stable order.
+pub fn print_log_sort_key(e: &PrintEvent) -> (Timestamp, String) {
+    (e.printed_at, e.id.as_str().to_owned())
 }
 
 // -------------------------------------------------------------------
@@ -569,6 +573,23 @@ mod tests {
             sample_print("ABCDEFGHJKMNPR", 10),
         ];
         assert!(validate_sort_stable(&backwards, print_log_sort_key).is_err());
+    }
+
+    #[test]
+    fn sort_stable_print_log_uses_id_as_tiebreaker_per_adr_015() {
+        // Two prints at the same printed_at; secondary key is id.
+        let in_order = [
+            sample_print("ABCDEFGHJKMNPQ", 10),
+            sample_print("ABCDEFGHJKMNPR", 10),
+        ];
+        assert!(validate_sort_stable(&in_order, print_log_sort_key).is_ok());
+
+        let out_of_order = [
+            sample_print("ABCDEFGHJKMNPR", 10),
+            sample_print("ABCDEFGHJKMNPQ", 10),
+        ];
+        let err = validate_sort_stable(&out_of_order, print_log_sort_key).unwrap_err();
+        assert_eq!(err, ValidationError::UnsortedAt { row_index: 1 });
     }
 
     // ------------------------------------------------------------------
