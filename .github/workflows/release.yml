@@ -49,6 +49,14 @@ jobs:
       - name: cargo build wasm32
         run: cargo build --target wasm32-unknown-unknown -p part-registry-wasm --release
 
+      # `npm test` runs `build:wasm` which shells out to
+      # `${WASM_BINDGEN:-$HOME/.cargo/bin/wasm-bindgen}`. Install the
+      # prebuilt CLI so the test job has it on PATH. Same dance as in
+      # the `bundle` job below + .github/workflows/playwright.yml.
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install wasm-bindgen-cli (prebuilt)
+        run: cargo binstall --no-confirm wasm-bindgen-cli@0.2.121
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
