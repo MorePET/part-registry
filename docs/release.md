@@ -103,9 +103,11 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
-      - name: npm ci
+      # See code-repo `.github/workflows/playwright.yml` for the
+      # `npm install` vs `npm ci` rationale.
+      - name: npm install
         working-directory: web
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: npm run build
         working-directory: web

@@ -35,7 +35,9 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
+      # See `.github/workflows/playwright.yml` for the npm install
+      # vs npm ci rationale (macOS-vs-Linux lockfile drift).
+      - run: npm install --no-audit --no-fund
       - run: npm run build
         env:
           VITE_BASE: /part-registry/

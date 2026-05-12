@@ -55,9 +55,12 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
-      - name: npm ci
+      # Use `npm install` rather than `npm ci` — see comment in
+      # `.github/workflows/playwright.yml` for the macOS-vs-Linux
+      # lockfile drift rationale.
+      - name: npm install
         working-directory: web
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: npm test
         working-directory: web
@@ -178,7 +181,7 @@ jobs:
           \`\`\`yaml
           - run: gh release download ${TAG} --repo ${GITHUB_REPOSITORY} --pattern "frontend-bundle-*.tar.gz"
           - run: tar xzf frontend-bundle-${TAG}.tar.gz
-          - run: cd web && npm ci && VITE_DATA_REPO=<owner>/<repo> npm run build
+          - run: cd web && npm install --no-audit --no-fund && VITE_DATA_REPO=<owner>/<repo> npm run build
           \`\`\`
 
           SHA-256 hashes (per ADR-025 §"Distribution integrity"):

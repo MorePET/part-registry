@@ -40,9 +40,18 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
-      - name: npm ci
+      # `npm ci` is the strict-lockfile variant; we use `npm install`
+      # because the lockfile is generated on macOS (Node 24 / npm 11)
+      # and CI runs on Linux (Node 22 / npm 10), which causes platform-
+      # specific optional deps (@emnapi/*, esbuild's Linux build) to
+      # disagree between the two. Reproducibility is preserved at the
+      # release-bundle level (we publish the resolved node_modules
+      # implicitly in the consumer's lockfile inside the bundle). To
+      # re-enable strict ci, regenerate the lockfile inside the flake
+      # shell (Node 22) before merging future dep bumps.
+      - name: npm install
         working-directory: web
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Install Playwright browsers
         working-directory: web

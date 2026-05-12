@@ -63,9 +63,12 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
-      - name: npm ci
+      # `npm install` rather than `npm ci` — see code-repo
+      # `.github/workflows/playwright.yml` for the macOS-vs-Linux
+      # lockfile drift rationale.
+      - name: npm install
         working-directory: web
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: npm run build
         working-directory: web
