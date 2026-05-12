@@ -55,9 +55,12 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
-      - name: npm ci
+      # Use `npm install` rather than `npm ci` — see comment in
+      # `.github/workflows/playwright.yml` for the macOS-vs-Linux
+      # lockfile drift rationale.
+      - name: npm install
         working-directory: web
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: npm test
         working-directory: web
@@ -90,8 +93,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install wasm-bindgen-cli
-        run: cargo install wasm-bindgen-cli --version 0.2.121 --locked
+      # `cargo install wasm-bindgen-cli 0.2.121` requires rustc 1.86+,
+      # but the workspace pins 1.85 (rust-toolchain.toml). cargo-binstall
+      # downloads the official prebuilt 1.85-compatible binary instead
+      # of recompiling. Same dance as .github/workflows/playwright.yml.
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install wasm-bindgen-cli (prebuilt)
+        run: cargo binstall --no-confirm wasm-bindgen-cli@0.2.121
 
       - name: Build WASM (release)
         run: cargo build --target wasm32-unknown-unknown -p part-registry-wasm --release
@@ -173,7 +181,7 @@ jobs:
           \`\`\`yaml
           - run: gh release download ${TAG} --repo ${GITHUB_REPOSITORY} --pattern "frontend-bundle-*.tar.gz"
           - run: tar xzf frontend-bundle-${TAG}.tar.gz
-          - run: cd web && npm ci && VITE_DATA_REPO=<owner>/<repo> npm run build
+          - run: cd web && npm install --no-audit --no-fund && VITE_DATA_REPO=<owner>/<repo> npm run build
           \`\`\`
 
           SHA-256 hashes (per ADR-025 §"Distribution integrity"):
