@@ -25,8 +25,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install wasm-bindgen-cli
-        run: cargo install wasm-bindgen-cli --version 0.2.121 --locked
+      # `cargo install wasm-bindgen-cli 0.2.121` requires rustc 1.86+,
+      # but the workspace pins 1.85 (rust-toolchain.toml). cargo-binstall
+      # downloads the official prebuilt 1.85-compatible binary instead
+      # of recompiling. Tracked as a follow-up: bump MSRV past 1.86 and
+      # this dance goes away.
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install wasm-bindgen-cli (prebuilt)
+        run: cargo binstall --no-confirm wasm-bindgen-cli@0.2.121
 
       - uses: actions/setup-node@v4
         with:

@@ -90,8 +90,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install wasm-bindgen-cli
-        run: cargo install wasm-bindgen-cli --version 0.2.121 --locked
+      # `cargo install wasm-bindgen-cli 0.2.121` requires rustc 1.86+,
+      # but the workspace pins 1.85 (rust-toolchain.toml). cargo-binstall
+      # downloads the official prebuilt 1.85-compatible binary instead
+      # of recompiling. Same dance as .github/workflows/playwright.yml.
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install wasm-bindgen-cli (prebuilt)
+        run: cargo binstall --no-confirm wasm-bindgen-cli@0.2.121
 
       - name: Build WASM (release)
         run: cargo build --target wasm32-unknown-unknown -p part-registry-wasm --release
