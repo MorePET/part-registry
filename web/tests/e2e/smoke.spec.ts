@@ -154,6 +154,56 @@ test.describe("Lookup data-grid (#10)", () => {
   });
 });
 
+test.describe("Print matrix studio (#11)", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route("**/registry.csv*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/csv" },
+        body: REGISTRY_TWO_ROWS,
+      });
+    });
+    await page.addInitScript(() => {
+      window.localStorage.removeItem("part-registry.print-plan");
+      window.localStorage.removeItem("part-registry.print-output-mode");
+    });
+  });
+
+  test("paper format dropdown lists DK continuous, DK strip, DK-1201 die-cut, and A4/Letter sheet", async ({ page }) => {
+    await page.goto("/");
+    await page.locator("nav.tabs").getByRole("button", { name: "Print" }).click();
+
+    const select = page.locator("select").filter({ hasText: "DK continuous" });
+    const options = await select.locator("option").allTextContents();
+    expect(options).toContain("DK continuous (auto-cut)");
+    expect(options).toContain("DK strip + crop marks");
+    expect(options).toContain("DK-1201 die-cut (29 × 90 mm)");
+    expect(options).toContain("Sticker sheet (A4 / Letter)");
+  });
+
+  test("matrix-add duplicates the row with the next layout for the same ID", async ({ page }) => {
+    await page.goto("/");
+    await page.locator("nav.tabs").getByRole("button", { name: "Print" }).click();
+
+    // Add one row via the entry row.
+    await page.locator(".tab--print .entry-row input[type='text']").fill("ABCDEFGHJKMNPQ");
+    await page.locator(".tab--print .entry-row .primary").click();
+
+    // Plan rows = tbody trs without the entry-row class.
+    const planRows = page.locator(".tab--print tbody tr:not(.entry-row)");
+    await expect(planRows).toHaveCount(1);
+
+    await page.locator(".tab--print .matrix-add").first().click();
+    await expect(planRows).toHaveCount(2);
+
+    // Both plan rows reference the same ID.
+    const idCells = planRows.locator(".id-cell");
+    const first = await idCells.nth(0).textContent();
+    const second = await idCells.nth(1).textContent();
+    expect(first).toBe(second);
+  });
+});
+
 test.describe("Lookup inline edit → bind queue (#6)", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/registry.csv*", async (route) => {
