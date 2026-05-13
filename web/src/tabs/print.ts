@@ -606,6 +606,38 @@ function renderJobRow(item: JobItem, index: number, onChange: () => void): HTMLE
   const copiesIn = numberInput({ value: item.copies, min: 1, max: 100, step: 1 });
   tr.append(el("td", {}, copiesIn));
 
+  // Matrix-add (#11): duplicate this row for the same ID with the next
+  // layout in the registry. Lets the operator stack a `horz` housing
+  // label + `flag` cable label for one part with a single click.
+  const matrixBtn = button(
+    {
+      class: "icon-only matrix-add",
+      title: "Add another layout for this ID",
+    },
+    icon("plus"),
+  );
+  matrixBtn.addEventListener("click", () => {
+    const plan = loadPlan();
+    const current = plan[index];
+    if (!current) return;
+    const layouts = allLayouts();
+    const idx = layouts.findIndex((l) => l.id === current.layoutId);
+    const next = layouts[(idx + 1) % layouts.length];
+    if (!next) return;
+    const nextLayout = getLayout(next.id);
+    const wantCableOd =
+      nextLayout?.optionFields?.().some((f) => f.key === "cableOd") ?? false;
+    plan.splice(index + 1, 0, {
+      id: current.id,
+      layoutId: next.id,
+      size: current.size,
+      copies: current.copies,
+      extras: wantCableOd ? { cableOd: current.extras.cableOd ?? 6 } : {},
+    });
+    savePlan(plan);
+    onChange();
+  });
+
   const trashBtn = button({ class: "icon-only", title: "Remove" }, icon("trash"));
   trashBtn.addEventListener("click", () => {
     const plan = loadPlan();
@@ -613,7 +645,7 @@ function renderJobRow(item: JobItem, index: number, onChange: () => void): HTMLE
     savePlan(plan);
     onChange();
   });
-  tr.append(el("td", { class: "row-actions" }, trashBtn));
+  tr.append(el("td", { class: "row-actions" }, matrixBtn, trashBtn));
 
   // Persist any field change.
   const persist = () => {
