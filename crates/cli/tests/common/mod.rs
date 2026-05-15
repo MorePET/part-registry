@@ -105,6 +105,7 @@ pub fn seeded_wiring(rows: &[(&str, &str, &str)]) -> (TempDir, Wiring, Arc<Mutex
 
 /// Same as `seeded_wiring`, but also lets the caller set notes per row.
 /// Each tuple: (id, status, batch, notes).
+#[allow(dead_code)]
 pub fn seeded_wiring_with_notes(
     rows: &[(&str, &str, &str, &str)],
 ) -> (TempDir, Wiring, Arc<Mutex<Vec<Proposal>>>) {
