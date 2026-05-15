@@ -47,7 +47,7 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 use part_registry_codec::{render_label, Layout, TextFormat};
-use part_registry_config::Config;
+use part_registry_config::{Config, IdentityAdapterChoice, StorageAdapterChoice};
 use part_registry_domain::{
     Action, AuditEntry, Diff, DiffEdit, DiffRow, Operator, OperatorRef, Part, PartId, PartStatus,
     PrintEvent, Proposal, ProposalRef, ProposalStatus, RequestId, Signature, TargetRef,
@@ -473,7 +473,7 @@ impl Wiring {
     /// `dry_run` is requested.
     pub fn from_config(cfg: &Config, dry_run: Option<DryRunTarget>) -> Result<Self, CliError> {
         // Repository ---------------------------------------------------
-        if cfg.storage.adapter != "csv_git" {
+        if cfg.storage.adapter != StorageAdapterChoice::CsvGit {
             return Err(CliError::BadArg(format!(
                 "unsupported storage adapter {:?}; only `csv_git` is wired today",
                 cfg.storage.adapter
@@ -495,8 +495,8 @@ impl Wiring {
         let repo_arc: Arc<dyn Repository> = Arc::new(repo);
 
         // Identity -----------------------------------------------------
-        let identity: Box<dyn IdentityProvider> = match cfg.identity.adapter.as_str() {
-            "git_config" => Box::new(GitConfigIdentity::new()),
+        let identity: Box<dyn IdentityProvider> = match cfg.identity.adapter {
+            IdentityAdapterChoice::GitConfig => Box::new(GitConfigIdentity::new()),
             other => {
                 return Err(CliError::BadArg(format!(
                     "unsupported identity adapter {other:?}; CLI supports `git_config`"
