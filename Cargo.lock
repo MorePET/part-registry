@@ -1704,6 +1704,7 @@ dependencies = [
 name = "part-registry-observability"
 version = "0.1.0"
 dependencies = [
+ "part-registry-config",
  "part-registry-domain",
  "part-registry-storage",
  "part-registry-storage-csv-git",
