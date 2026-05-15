@@ -147,7 +147,12 @@ export function renderLabelSync(
   layout: WasmLayoutId,
   sizeMm: number,
   format: WasmFormatId,
-  options: { micro?: boolean; cableOdMm?: number } = {},
+  options: {
+    micro?: boolean;
+    cableOdMm?: number;
+    noMarkers?: boolean;
+    alignmentLine?: boolean;
+  } = {},
 ): string {
   return requireReady().renderLabel(
     canonical,
@@ -156,6 +161,8 @@ export function renderLabelSync(
     format,
     options.micro ?? false,
     options.cableOdMm ?? 0,
+    options.noMarkers ?? false,
+    options.alignmentLine ?? false,
   );
 }
 
@@ -193,7 +200,12 @@ export async function renderLabel(
   layout: WasmLayoutId,
   sizeMm: number,
   format: WasmFormatId,
-  options: { micro?: boolean; cableOdMm?: number } = {},
+  options: {
+    micro?: boolean;
+    cableOdMm?: number;
+    noMarkers?: boolean;
+    alignmentLine?: boolean;
+  } = {},
 ): Promise<string> {
   const wasm = await loadWasm();
   return wasm.renderLabel(
@@ -203,6 +215,8 @@ export async function renderLabel(
     format,
     options.micro ?? false,
     options.cableOdMm ?? 0,
+    options.noMarkers ?? false,
+    options.alignmentLine ?? false,
   );
 }
 

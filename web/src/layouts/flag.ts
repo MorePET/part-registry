@@ -35,6 +35,8 @@ export const flagLayout: Layout = {
   renderSvg(canonical: string, opts: LayoutOptions): string {
     return renderLabelSync(canonical, "flag", opts.size, FORMAT, {
       cableOdMm: cableOd(opts),
+      noMarkers: Boolean(opts.extra?.noMarkers),
+      alignmentLine: Boolean(opts.extra?.alignmentLine),
     });
   },
   optionFields(): LayoutOptionField[] {
@@ -47,6 +49,18 @@ export const flagLayout: Layout = {
         min: 1,
         max: 50,
         step: 0.5,
+      },
+      {
+        key: "noMarkers",
+        label: "No markers",
+        type: "checkbox",
+        default: 0,
+      },
+      {
+        key: "alignmentLine",
+        label: "Alignment line",
+        type: "checkbox",
+        default: 0,
       },
     ];
   },
