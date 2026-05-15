@@ -309,16 +309,36 @@ function buildUI(ctx: AppContext): HTMLElement {
       if (tapeSel.value) sizeIn.value = String(TAPE_SIZES[tapeSel.value]);
     });
     const copiesIn = numberInput({ value: 1, min: 1, max: 100, step: 1 });
-    const cableOdIn = numberInput({ value: 6, min: 1, max: 50, step: 0.5 });
-    const cableOdLabel = el("label", { class: "muted small" }, "Cable OD (mm)");
-    const cableOdRow = formRow([cableOdLabel, cableOdIn]);
-    const updateExtras = () => {
+    const bulkExtrasArea = el("div");
+    const bulkExtraInputs: Record<string, HTMLInputElement> = {};
+    const updateBulkExtras = () => {
       const layout = getLayout(layoutSel.value);
-      const showCableOd = layout?.optionFields?.().some((f) => f.key === "cableOd") ?? false;
-      cableOdRow.style.display = showCableOd ? "" : "none";
+      const fields = layout?.optionFields?.() ?? [];
+      bulkExtrasArea.innerHTML = "";
+      for (const f of fields) {
+        if (f.type === "checkbox") {
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = false;
+          const lbl = el("label", { class: "muted small" });
+          lbl.append(cb, " " + f.label);
+          bulkExtrasArea.append(formRow([lbl]));
+          bulkExtraInputs[f.key] = cb;
+        } else {
+          const inp = numberInput({
+            value: f.default as number,
+            min: f.min,
+            max: f.max,
+            step: f.step,
+          });
+          const lbl = el("label", { class: "muted small" }, f.label);
+          bulkExtrasArea.append(formRow([lbl, inp]));
+          bulkExtraInputs[f.key] = inp;
+        }
+      }
     };
-    layoutSel.addEventListener("change", updateExtras);
-    updateExtras();
+    layoutSel.addEventListener("change", updateBulkExtras);
+    updateBulkExtras();
 
     const confirm = button({ class: "primary" }, icon("plus"), " Add to plan");
     const cancel = button({}, icon("x"), " Cancel");
@@ -334,9 +354,16 @@ function buildUI(ctx: AppContext): HTMLElement {
         return;
       }
       const layout = getLayout(layoutSel.value);
+      const fields = layout?.optionFields?.() ?? [];
       const extras: Record<string, number> = {};
-      if (layout?.optionFields?.().some((f) => f.key === "cableOd")) {
-        extras.cableOd = parseFloat(cableOdIn.value);
+      for (const f of fields) {
+        const inp = bulkExtraInputs[f.key];
+        if (!inp) continue;
+        if (f.type === "checkbox") {
+          extras[f.key] = inp.checked ? 1 : 0;
+        } else {
+          extras[f.key] = parseFloat(inp.value) || (f.default as number);
+        }
       }
       const plan = loadPlan();
       for (const r of rows) {
@@ -358,7 +385,7 @@ function buildUI(ctx: AppContext): HTMLElement {
       formRow([el("label", {}, "Batch"), batchSel]),
       formRow([el("label", {}, "Layout"), layoutSel]),
       formRow([el("label", {}, "Tape"), tapeSel, el("label", {}, "Size (mm)"), sizeIn]),
-      cableOdRow,
+      bulkExtrasArea,
       formRow([el("label", {}, "Copies / ID"), copiesIn]),
       formRow([confirm, cancel]),
     );
@@ -585,20 +612,37 @@ function renderJobRow(item: JobItem, index: number, onChange: () => void): HTMLE
   const sizeIn = numberInput({ value: item.size, min: 4, max: 100, step: 0.5 });
   tr.append(el("td", {}, sizeIn));
 
-  // Extras cell: cableOd input visible only when layout is flag.
+  // Extras cell: layout-specific option fields (cableOd, noMarkers, etc.).
   const extrasCell = el("td");
-  const cableOdIn = numberInput({
-    value: item.extras.cableOd ?? 6,
-    min: 1,
-    max: 50,
-    step: 0.5,
-  });
-  cableOdIn.title = "Cable OD (mm)";
+  const extraInputs: Record<string, HTMLInputElement> = {};
   const updateExtras = () => {
     const layout = getLayout(layoutSel.value);
-    const wantCableOd = layout?.optionFields?.().some((f) => f.key === "cableOd") ?? false;
+    const fields = layout?.optionFields?.() ?? [];
     extrasCell.innerHTML = "";
-    if (wantCableOd) extrasCell.append(cableOdIn);
+    for (const f of fields) {
+      if (f.type === "checkbox") {
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = Boolean(item.extras[f.key]);
+        cb.title = f.label;
+        const lbl = el("label", { class: "muted small", style: "display:inline-flex;align-items:center;gap:2px;margin-right:6px;" });
+        lbl.append(cb, f.label);
+        extrasCell.append(lbl);
+        extraInputs[f.key] = cb;
+        cb.addEventListener("change", persist);
+      } else {
+        const inp = numberInput({
+          value: (item.extras[f.key] as number) ?? f.default,
+          min: f.min,
+          max: f.max,
+          step: f.step,
+        });
+        inp.title = f.label;
+        extrasCell.append(inp);
+        extraInputs[f.key] = inp;
+        inp.addEventListener("change", persist);
+      }
+    }
   };
   updateExtras();
   tr.append(extrasCell);
@@ -625,14 +669,18 @@ function renderJobRow(item: JobItem, index: number, onChange: () => void): HTMLE
     const next = layouts[(idx + 1) % layouts.length];
     if (!next) return;
     const nextLayout = getLayout(next.id);
-    const wantCableOd =
-      nextLayout?.optionFields?.().some((f) => f.key === "cableOd") ?? false;
+    const fields = nextLayout?.optionFields?.() ?? [];
+    const extras: Record<string, number> = {};
+    for (const f of fields) {
+      // Carry forward matching extras from current row, else default.
+      extras[f.key] = current.extras[f.key] ?? (f.default as number);
+    }
     plan.splice(index + 1, 0, {
       id: current.id,
       layoutId: next.id,
       size: current.size,
       copies: current.copies,
-      extras: wantCableOd ? { cableOd: current.extras.cableOd ?? 6 } : {},
+      extras,
     });
     savePlan(plan);
     onChange();
@@ -656,8 +704,18 @@ function renderJobRow(item: JobItem, index: number, onChange: () => void): HTMLE
     target.size = parseFloat(sizeIn.value) || target.size;
     target.copies = Math.max(1, parseInt(copiesIn.value, 10) || target.copies);
     const layout = getLayout(target.layoutId);
-    const wantCableOd = layout?.optionFields?.().some((f) => f.key === "cableOd") ?? false;
-    target.extras = wantCableOd ? { cableOd: parseFloat(cableOdIn.value) || 6 } : {};
+    const fields = layout?.optionFields?.() ?? [];
+    const extras: Record<string, number> = {};
+    for (const f of fields) {
+      const inp = extraInputs[f.key];
+      if (!inp) continue;
+      if (f.type === "checkbox") {
+        extras[f.key] = inp.checked ? 1 : 0;
+      } else {
+        extras[f.key] = parseFloat(inp.value) || (f.default as number);
+      }
+    }
+    target.extras = extras;
     savePlan(plan);
     onChange();
   };
@@ -665,7 +723,7 @@ function renderJobRow(item: JobItem, index: number, onChange: () => void): HTMLE
     persist();
     updateExtras();
   });
-  for (const inp of [sizeIn, copiesIn, cableOdIn]) {
+  for (const inp of [sizeIn, copiesIn]) {
     inp.addEventListener("change", persist);
   }
 
@@ -702,14 +760,34 @@ function renderEntryRow(ctx: AppContext, onAdd: () => void): HTMLElement {
   const sizeIn = numberInput({ value: DEFAULT_SIZE_MM, min: 4, max: 100, step: 0.5 });
   tr.append(el("td", {}, sizeIn));
 
-  const cableOdIn = numberInput({ value: 6, min: 1, max: 50, step: 0.5 });
-  cableOdIn.title = "Cable OD (mm)";
   const extrasCell = el("td");
+  const entryExtraInputs: Record<string, HTMLInputElement> = {};
   const updateExtras = () => {
     const layout = getLayout(layoutSel.value);
-    const wantCableOd = layout?.optionFields?.().some((f) => f.key === "cableOd") ?? false;
+    const fields = layout?.optionFields?.() ?? [];
     extrasCell.innerHTML = "";
-    if (wantCableOd) extrasCell.append(cableOdIn);
+    for (const f of fields) {
+      if (f.type === "checkbox") {
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = false;
+        cb.title = f.label;
+        const lbl = el("label", { class: "muted small", style: "display:inline-flex;align-items:center;gap:2px;margin-right:6px;" });
+        lbl.append(cb, f.label);
+        extrasCell.append(lbl);
+        entryExtraInputs[f.key] = cb;
+      } else {
+        const inp = numberInput({
+          value: f.default as number,
+          min: f.min,
+          max: f.max,
+          step: f.step,
+        });
+        inp.title = f.label;
+        extrasCell.append(inp);
+        entryExtraInputs[f.key] = inp;
+      }
+    }
   };
   layoutSel.addEventListener("change", updateExtras);
   updateExtras();
@@ -726,14 +804,24 @@ function renderEntryRow(ctx: AppContext, onAdd: () => void): HTMLElement {
       return;
     }
     const layout = getLayout(layoutSel.value);
-    const wantCableOd = layout?.optionFields?.().some((f) => f.key === "cableOd") ?? false;
+    const fields = layout?.optionFields?.() ?? [];
+    const extras: Record<string, number> = {};
+    for (const f of fields) {
+      const inp = entryExtraInputs[f.key];
+      if (!inp) continue;
+      if (f.type === "checkbox") {
+        extras[f.key] = inp.checked ? 1 : 0;
+      } else {
+        extras[f.key] = parseFloat(inp.value) || (f.default as number);
+      }
+    }
     const plan = loadPlan();
     plan.push({
       id,
       layoutId: layoutSel.value,
       size: parseFloat(sizeIn.value),
       copies: parseInt(copiesIn.value, 10),
-      extras: wantCableOd ? { cableOd: parseFloat(cableOdIn.value) } : {},
+      extras,
     });
     savePlan(plan);
     idIn.value = "";

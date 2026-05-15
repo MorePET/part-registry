@@ -1092,6 +1092,8 @@ pub fn run_label(args: &LabelArgs, wiring: &Wiring) -> Result<LabelOutcome, CliE
         LayoutArg::Horz => Layout::Horz,
         LayoutArg::Flag => Layout::Flag {
             cable_od_mm: args.cable_od.expect("cable_od checked above"),
+            no_markers: false,
+            alignment_line: false,
         },
     };
 
