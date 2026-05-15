@@ -19,6 +19,10 @@ const boundRow: RegistryRow = {
   part_number: "402-141",
   location: "cooling loop / supply-T",
   notes: "bench fixture",
+  minted_by: "",
+  bound_by: "",
+  last_edited_at: "",
+  last_edited_by: "",
 };
 
 function makeRegistry(rows: RegistryRow[]): Registry {
