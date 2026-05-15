@@ -85,23 +85,25 @@ function buildUI(ctx: AppContext): HTMLElement {
 
   const tableContainer = el("div", {});
 
-  const refreshPreflight = (queue: QueuedBind[]) => {
+  const refreshPreflight = (queue: ReadonlyArray<QueuedBind | QueuedEdit>) => {
     preflightContainer.innerHTML = "";
     if (queue.length === 0) return;
     try {
       const registry = buildRegistryMap(ctx);
-      const items: QueueItem[] = queue.map((q) => ({
-        id: q.id,
-        kind: "bind",
-        fields: {
-          type: q.type,
-          description: q.description,
-          vendor: q.vendor,
-          part_number: q.part_number,
-          location: q.location,
-          notes: q.notes,
-        },
-      }));
+      const items: QueueItem[] = queue
+        .filter((q): q is QueuedBind => q.kind === "bind")
+        .map((q) => ({
+          id: q.id,
+          kind: "bind" as const,
+          fields: {
+            type: q.type,
+            description: q.description,
+            vendor: q.vendor,
+            part_number: q.part_number,
+            location: q.location,
+            notes: q.notes,
+          },
+        }));
       const result = runPreflight(items, registry);
       preflightContainer.append(renderPreflight(result));
       // Block submit on policy block OR unknown-id (FE-local).
