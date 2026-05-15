@@ -5,7 +5,10 @@
 
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "fs";
-import { resolve } from "path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 import { FIELD_KEYS, STATUSES } from "./helpers/contract";
 
 const FIXTURE_CSV = readFileSync(

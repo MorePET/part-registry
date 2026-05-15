@@ -2,7 +2,13 @@
 // come from the shared registry contract so tests drift-detect
 // automatically when the schema changes.
 
-import contract from '../../../../schema/registry-contract.json';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const contract = require('../../../../schema/registry-contract.json') as {
+  id: { alphabet: string; canonicalLength: number; prefixLength: number; legacyCanonicalLength: number };
+  statuses: string[];
+  fields: Array<{ key: string; label: string; editable: boolean; meaningfulFrom?: string }>;
+};
 
 export { contract };
 
