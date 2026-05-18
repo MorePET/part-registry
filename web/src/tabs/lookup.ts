@@ -5,6 +5,7 @@
 //
 //   - top toolbar with fuzzy search + status filter + scan button
 //   - table view (sticky header) with every part, status-coloured
+//   - dashboard view with aggregate stats by batch/location/vendor/status (#98)
 //   - row click expands a detail card inline (with Reprint action +
 //     a deep-link via `ctx.showPart`)
 //   - works for the 0-row case (empty registry → friendly empty state)
@@ -28,6 +29,7 @@ import { icon } from "../ui/icons";
 import { openScanner, type ScanStatus } from "../ui/scanner";
 
 type StatusFilter = "all" | Status;
+type ViewMode = "table" | "dashboard";
 
 // Columns surfaced in the table view. Subset of `FIELDS` chosen for
 // at-a-glance density: id + status + the discriminating metadata
@@ -58,10 +60,271 @@ export const lookupTab: Tab = {
   },
 };
 
+// ---------- Aggregation helpers (#98) ----------
+
+interface StatusCounts {
+  unbound: number;
+  bound: number;
+  void: number;
+}
+
+function countStatuses(rows: RegistryRow[]): StatusCounts {
+  const c: StatusCounts = { unbound: 0, bound: 0, void: 0 };
+  for (const r of rows) {
+    if (r.status === "unbound") c.unbound++;
+    else if (r.status === "bound") c.bound++;
+    else if (r.status === "void") c.void++;
+  }
+  return c;
+}
+
+interface BatchGroup {
+  name: string;
+  rows: RegistryRow[];
+  counts: StatusCounts;
+  oldestMinted: string;
+}
+
+function groupByBatch(rows: RegistryRow[]): BatchGroup[] {
+  const map = new Map<string, RegistryRow[]>();
+  for (const r of rows) {
+    const key = r.batch || "(no batch)";
+    const arr = map.get(key);
+    if (arr) arr.push(r);
+    else map.set(key, [r]);
+  }
+  return [...map.entries()].map(([name, group]) => {
+    const minted = group
+      .map((r) => r.minted_at)
+      .filter(Boolean)
+      .sort();
+    return {
+      name,
+      rows: group,
+      counts: countStatuses(group),
+      oldestMinted: minted[0] || "—",
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+interface LocationGroup {
+  name: string;
+  count: number;
+  types: string[];
+}
+
+function groupByLocation(rows: RegistryRow[]): LocationGroup[] {
+  const map = new Map<string, { count: number; types: Set<string> }>();
+  for (const r of rows) {
+    const key = r.location || "(no location)";
+    let entry = map.get(key);
+    if (!entry) { entry = { count: 0, types: new Set() }; map.set(key, entry); }
+    entry.count++;
+    if (r.type) entry.types.add(r.type);
+  }
+  return [...map.entries()]
+    .map(([name, v]) => ({ name, count: v.count, types: [...v.types].sort() }))
+    .sort((a, b) => b.count - a.count);
+}
+
+interface VendorGroup {
+  name: string;
+  count: number;
+  types: string[];
+  counts: StatusCounts;
+}
+
+function groupByVendor(rows: RegistryRow[]): VendorGroup[] {
+  const map = new Map<string, { rows: RegistryRow[]; types: Set<string> }>();
+  for (const r of rows) {
+    const key = r.vendor || "(no vendor)";
+    let entry = map.get(key);
+    if (!entry) { entry = { rows: [], types: new Set() }; map.set(key, entry); }
+    entry.rows.push(r);
+    if (r.type) entry.types.add(r.type);
+  }
+  return [...map.entries()]
+    .map(([name, v]) => ({
+      name,
+      count: v.rows.length,
+      types: [...v.types].sort(),
+      counts: countStatuses(v.rows),
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// ---------- Dashboard rendering (#98) ----------
+
+function statusBadge(status: Status, count: number): HTMLElement {
+  return el("span", { class: `chip chip--status chip--${status}` }, `${count} ${status}`);
+}
+
+function progressBar(counts: StatusCounts, total: number): HTMLElement {
+  const bar = el("div", { class: "dash__progress" });
+  if (total === 0) return bar;
+  for (const s of ["unbound", "bound", "void"] as const) {
+    const pct = (counts[s] / total) * 100;
+    if (pct > 0) {
+      bar.append(el("div", {
+        class: `dash__progress-seg dash__progress--${s}`,
+        style: `width:${pct}%`,
+        title: `${counts[s]} ${s} (${pct.toFixed(1)}%)`,
+      }));
+    }
+  }
+  return bar;
+}
+
+function collapsibleSection(
+  title: string,
+  content: HTMLElement,
+  startOpen = true,
+): HTMLElement {
+  const section = el("article", { class: "dash__section" });
+  const header = el("header", { class: "dash__section-header" });
+  const toggle = el("span", { class: "dash__toggle" }, startOpen ? "\u25BC" : "\u25B6");
+  header.append(toggle, el("strong", {}, ` ${title}`));
+  header.style.cursor = "pointer";
+  content.style.display = startOpen ? "" : "none";
+  header.addEventListener("click", () => {
+    const open = content.style.display !== "none";
+    content.style.display = open ? "none" : "";
+    toggle.textContent = open ? "\u25B6" : "\u25BC";
+  });
+  section.append(header, content);
+  return section;
+}
+
+function renderDashboard(
+  rows: RegistryRow[],
+  switchToTableWithFilter: (key: string, value: string) => void,
+): HTMLElement {
+  const wrap = el("div", { class: "dash" });
+  const total = rows.length;
+  const counts = countStatuses(rows);
+  const batches = new Set(rows.map((r) => r.batch).filter(Boolean));
+
+  // ---- Summary cards ----
+  const cards = el("div", { class: "dash__cards" });
+  cards.append(
+    el("article", { class: "dash__card" },
+      el("div", { class: "dash__card-value" }, String(total)),
+      el("div", { class: "dash__card-label" }, "Total parts"),
+    ),
+    el("article", { class: "dash__card" },
+      el("div", { class: "dash__card-badges" },
+        statusBadge("unbound", counts.unbound),
+        statusBadge("bound", counts.bound),
+        statusBadge("void", counts.void),
+      ),
+      el("div", { class: "dash__card-label" }, "By status"),
+    ),
+    el("article", { class: "dash__card" },
+      el("div", { class: "dash__card-value" }, String(batches.size)),
+      el("div", { class: "dash__card-label" }, "Batches"),
+    ),
+  );
+  wrap.append(cards);
+
+  // ---- By Batch ----
+  const batchGroups = groupByBatch(rows);
+  const batchContent = el("div", { class: "dash__group-list" });
+  for (const g of batchGroups) {
+    const row = el("div", { class: "dash__group-row dash__group-row--clickable" });
+    row.append(
+      el("div", { class: "dash__group-name" }, g.name),
+      el("div", { class: "dash__group-count" }, `${g.rows.length} parts`),
+      el("div", { class: "dash__group-meta" },
+        statusBadge("unbound", g.counts.unbound),
+        statusBadge("bound", g.counts.bound),
+        statusBadge("void", g.counts.void),
+      ),
+      el("div", { class: "dash__group-detail muted small" }, `oldest: ${g.oldestMinted}`),
+    );
+    row.addEventListener("click", () => switchToTableWithFilter("batch", g.name));
+    batchContent.append(row);
+  }
+  wrap.append(collapsibleSection(`By Batch (${batchGroups.length})`, batchContent));
+
+  // ---- By Location ----
+  const locGroups = groupByLocation(rows);
+  const locContent = el("div", { class: "dash__group-list" });
+  for (const g of locGroups) {
+    const row = el("div", { class: "dash__group-row dash__group-row--clickable" });
+    row.append(
+      el("div", { class: "dash__group-name" }, g.name),
+      el("div", { class: "dash__group-count" }, `${g.count} parts`),
+      el("div", { class: "dash__group-detail muted small" },
+        g.types.length > 0 ? g.types.join(", ") : "—",
+      ),
+    );
+    row.addEventListener("click", () => switchToTableWithFilter("location", g.name));
+    locContent.append(row);
+  }
+  wrap.append(collapsibleSection(`By Location (${locGroups.length})`, locContent));
+
+  // ---- By Vendor ----
+  const vendorGroups = groupByVendor(rows);
+  const vendorContent = el("div", { class: "dash__group-list" });
+  for (const g of vendorGroups) {
+    const row = el("div", { class: "dash__group-row dash__group-row--clickable" });
+    row.append(
+      el("div", { class: "dash__group-name" }, g.name),
+      el("div", { class: "dash__group-count" }, `${g.count} parts`),
+      el("div", { class: "dash__group-meta" },
+        statusBadge("unbound", g.counts.unbound),
+        statusBadge("bound", g.counts.bound),
+        statusBadge("void", g.counts.void),
+      ),
+      el("div", { class: "dash__group-detail muted small" },
+        g.types.length > 0 ? g.types.join(", ") : "—",
+      ),
+    );
+    row.addEventListener("click", () => switchToTableWithFilter("vendor", g.name));
+    vendorContent.append(row);
+  }
+  wrap.append(collapsibleSection(`By Vendor (${vendorGroups.length})`, vendorContent));
+
+  // ---- By Status (progress bar visualization) ----
+  const statusContent = el("div", { class: "dash__group-list" });
+  statusContent.append(progressBar(counts, total));
+  for (const s of ["unbound", "bound", "void"] as const) {
+    const pct = total > 0 ? ((counts[s] / total) * 100).toFixed(1) : "0";
+    const row = el("div", { class: "dash__group-row dash__group-row--clickable" });
+    row.append(
+      statusBadge(s, counts[s]),
+      el("div", { class: "dash__group-detail muted small" }, `${pct}%`),
+    );
+    row.addEventListener("click", () => switchToTableWithFilter("status", s));
+    statusContent.append(row);
+  }
+  wrap.append(collapsibleSection("By Status", statusContent));
+
+  return wrap;
+}
+
+// ---------- Main UI builder ----------
+
 function buildUI(ctx: AppContext): HTMLElement {
   const root = el("div", { class: "tab tab--lookup" });
   const header = el("h2", {}, "Lookup");
   root.append(header);
+
+  // ---------- view toggle ----------
+  let viewMode: ViewMode = "table";
+  const viewToggle = el("div", { class: "lookup__view-toggle" });
+  const tableBtn = button({ class: "chip chip--filter active" }, "Table");
+  const dashBtn = button({ class: "chip chip--filter" }, "Dashboard");
+  viewToggle.append(tableBtn, dashBtn);
+
+  function setViewMode(mode: ViewMode) {
+    viewMode = mode;
+    tableBtn.classList.toggle("active", mode === "table");
+    dashBtn.classList.toggle("active", mode === "dashboard");
+    render();
+  }
+  tableBtn.addEventListener("click", () => setViewMode("table"));
+  dashBtn.addEventListener("click", () => setViewMode("dashboard"));
 
   // ---------- toolbar ----------
   const searchInput = input({
@@ -81,7 +344,7 @@ function buildUI(ctx: AppContext): HTMLElement {
       for (const [k, b] of statusBtns) {
         b.classList.toggle("active", k === s);
       }
-      renderRows();
+      render();
     });
     statusBtns.set(s, btn);
     statusBar.append(btn);
@@ -103,7 +366,7 @@ function buildUI(ctx: AppContext): HTMLElement {
         },
       });
       searchInput.value = text;
-      renderRows();
+      render();
     } catch {
       /* cancelled */
     }
@@ -112,21 +375,12 @@ function buildUI(ctx: AppContext): HTMLElement {
   root.append(
     formRow([searchInput, scanBtn]),
     statusBar,
+    viewToggle,
   );
 
-  // ---------- table ----------
-  const tableWrap = el("div", { class: "lookup__table-wrap" });
-  const table = el("table", { class: "data lookup__table" });
-  const thead = el("thead");
-  const headRow = el("tr");
-  for (const col of COLUMNS) headRow.append(el("th", {}, col.label));
-  headRow.append(el("th", { class: "lookup__th-actions" }, ""));
-  thead.append(headRow);
-  table.append(thead);
-  const tbody = el("tbody");
-  table.append(tbody);
-  tableWrap.append(table);
-  root.append(tableWrap);
+  // ---------- content area (table or dashboard) ----------
+  const contentArea = el("div", { class: "lookup__content" });
+  root.append(contentArea);
 
   const detailCell = el("div", { class: "lookup__detail" });
   root.append(detailCell);
@@ -141,10 +395,8 @@ function buildUI(ctx: AppContext): HTMLElement {
     ignoreLocation: true,
   });
 
-  const renderRows = () => {
-    tbody.innerHTML = "";
-    detailCell.innerHTML = "";
-
+  /** Resolve the current filtered row set (shared by table + dashboard). */
+  function filteredRows(): RegistryRow[] {
     const q = searchInput.value.trim();
     let rows: RegistryRow[];
     if (!q) {
@@ -162,6 +414,61 @@ function buildUI(ctx: AppContext): HTMLElement {
     if (statusFilter !== "all") {
       rows = rows.filter((r) => r.status === statusFilter);
     }
+    return rows;
+  }
+
+  /** Render the active view (table or dashboard) into contentArea. */
+  function render() {
+    contentArea.innerHTML = "";
+    detailCell.innerHTML = "";
+
+    if (viewMode === "dashboard") {
+      renderDashboardView();
+    } else {
+      renderTableView();
+    }
+  }
+
+  function renderDashboardView() {
+    const rows = filteredRows();
+    const dash = renderDashboard(rows, (key, value) => {
+      // Switch back to table view with the clicked group as a search filter
+      if (key === "status") {
+        const s = value as StatusFilter;
+        statusFilter = s;
+        for (const [k, b] of statusBtns) {
+          b.classList.toggle("active", k === s);
+        }
+        searchInput.value = "";
+      } else {
+        statusFilter = "all";
+        for (const [k, b] of statusBtns) {
+          b.classList.toggle("active", k === "all");
+        }
+        // Use the raw value for filtering — strip "(no ...)" sentinel
+        const filterVal = value.startsWith("(no ") ? "" : value;
+        searchInput.value = filterVal;
+      }
+      setViewMode("table");
+    });
+    contentArea.append(dash);
+  }
+
+  function renderTableView() {
+    const tableWrap = el("div", { class: "lookup__table-wrap" });
+    const table = el("table", { class: "data lookup__table" });
+    const thead = el("thead");
+    const headRow = el("tr");
+    for (const col of COLUMNS) headRow.append(el("th", {}, col.label));
+    headRow.append(el("th", { class: "lookup__th-actions" }, ""));
+    thead.append(headRow);
+    table.append(thead);
+    const tbody = el("tbody");
+    table.append(tbody);
+    tableWrap.append(table);
+    contentArea.append(tableWrap);
+
+    const rows = filteredRows();
 
     if (rows.length === 0) {
       const td = el("td", { colspan: String(COLUMNS.length + 1), class: "muted" });
@@ -207,16 +514,16 @@ function buildUI(ctx: AppContext): HTMLElement {
       });
       tbody.append(tr);
     }
-  };
+  }
 
-  searchInput.addEventListener("input", renderRows);
+  searchInput.addEventListener("input", () => render());
 
   // Deep-link: if URL is /<ID>, open the detail card directly.
   const route = ctx.getRoute();
   if (route.kind === "part") {
     searchInput.value = route.id;
   }
-  renderRows();
+  render();
   if (route.kind === "part") {
     const row = ctx.registry.findById(route.id);
     if (row) detailCell.append(renderDetailView(row, ctx));

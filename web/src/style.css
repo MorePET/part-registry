@@ -427,6 +427,117 @@ table.data .actions { display: flex; gap: 4px; justify-content: flex-end; }
 
 .queue-summary { margin-left: 12px; }
 
+/* ---- Lookup view toggle + dashboard (#98) ---- */
+.lookup__view-toggle {
+  display: flex; gap: 6px; margin: 8px 0;
+}
+
+.dash__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.dash__card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  text-align: center;
+}
+.dash__card-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.dash__card-label {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+.dash__card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.dash__section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.dash__section-header {
+  padding: 10px 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.dash__toggle {
+  display: inline-block;
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.dash__group-list {
+  padding: 8px;
+}
+.dash__group-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+}
+.dash__group-row--clickable {
+  cursor: pointer;
+}
+.dash__group-row--clickable:hover {
+  background: var(--row-hover);
+}
+.dash__group-name {
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+  min-width: 140px;
+}
+.dash__group-count {
+  color: var(--muted);
+  font-size: 13px;
+  min-width: 80px;
+}
+.dash__group-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.dash__group-detail {
+  flex: 1;
+  text-align: right;
+  min-width: 80px;
+}
+
+/* Status distribution progress bar */
+.dash__progress {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg);
+  margin-bottom: 8px;
+}
+.dash__progress-seg {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+.dash__progress--unbound { background: #2e7d32; }
+.dash__progress--bound { background: #1f6feb; }
+.dash__progress--void { background: #c62828; }
+
 /* ---- Image upload scan (#99) ---- */
 .scan-overlay--image {
   /* Reuse the snapshot palette from scan-overlay. */
