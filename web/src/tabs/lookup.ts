@@ -19,7 +19,7 @@
 import Fuse from "fuse.js";
 
 import { ID_LENGTH, ID_REGEX, DATA_REPO_SLUG, DEFAULT_BRANCH, DEFAULT_SIZE_MM } from "../config";
-import { FIELDS, STATUSES, REGISTRY_FIELD_KEYS, type RegistryRow, type Status } from "../registry/schema";
+import { FIELDS, REGISTRY_FIELD_KEYS, type RegistryRow, type Status } from "../registry/schema";
 import { appendEdit, appendVoid } from "../registry/queue";
 import type { AppContext, Tab } from "../core/types";
 import { normalizeCanonicalId } from "../routing/route";
@@ -38,7 +38,7 @@ type StatusFilter = "all" | Status;
 // Columns surfaced in the table view. Subset of `FIELDS` chosen for
 // at-a-glance density: id + status + the discriminating metadata
 // fields. Edit / Reprint live in the row action cell.
-const COLUMNS: { key: keyof RegistryRow; label: string }[] = [
+const COLUMNS: { key: string; label: string }[] = [
   { key: "id", label: "ID" },
   { key: "status", label: "Status" },
   { key: "type", label: "Type" },
@@ -50,7 +50,7 @@ const COLUMNS: { key: keyof RegistryRow; label: string }[] = [
 // #93: sortable columns
 type SortDir = "asc" | "desc" | "none";
 interface SortState {
-  key: keyof RegistryRow;
+  key: string;
   dir: SortDir;
 }
 
@@ -102,7 +102,7 @@ function writeFilterParams(
 }
 
 // #93: unique non-empty values for a field across the registry
-function uniqueValues(rows: RegistryRow[], key: keyof RegistryRow): string[] {
+function uniqueValues(rows: RegistryRow[], key: string): string[] {
   const set = new Set<string>();
   for (const r of rows) {
     const v = (r as unknown as Record<string, string>)[key];
@@ -695,7 +695,7 @@ function buildUI(ctx: AppContext): HTMLElement {
 // Fields the operator can edit from the Lookup detail card.
 // `status` is editable here (not in the bind form) because mid-life
 // status changes ("mark void") are an edit-only operation per #6.
-const EDIT_FIELD_KEYS: (keyof RegistryRow)[] = [
+const EDIT_FIELD_KEYS: string[] = [
   "status",
   "type",
   "description",
@@ -831,7 +831,7 @@ function renderDetailEdit(row: RegistryRow, ctx: AppContext): HTMLElement {
   wrap.append(el("h3", { class: "row-detail__id" }, fmtId(row.id)));
 
   const form = el("form", { class: "row-detail__form" });
-  const inputs = new Map<keyof RegistryRow, HTMLInputElement | HTMLSelectElement>();
+  const inputs = new Map<string, HTMLInputElement | HTMLSelectElement>();
 
   for (const key of EDIT_FIELD_KEYS) {
     const fieldDef = FIELDS.find((f) => f.key === key);
@@ -842,16 +842,55 @@ function renderDetailEdit(row: RegistryRow, ctx: AppContext): HTMLElement {
     labelEl.append(el("span", { class: "row-detail__label" }, label));
 
     let field: HTMLInputElement | HTMLSelectElement;
-    if (key === "status") {
-      const select = document.createElement("select");
-      for (const s of STATUSES) {
-        const opt = document.createElement("option");
-        opt.value = s;
-        opt.textContent = s;
-        if (s === row.status) opt.selected = true;
-        select.append(opt);
+    if (fieldDef && fieldDef.type === "dropdown" && fieldDef.options) {
+      if (fieldDef.on_unknown === "warn") {
+        // Allow free text with datalist suggestions.
+        field = input({ type: "text", value });
+        const listId = `dl-edit-${key}`;
+        const datalist = document.createElement("datalist");
+        datalist.id = listId;
+        for (const opt of fieldDef.options) {
+          const o = document.createElement("option");
+          o.value = opt;
+          datalist.append(o);
+        }
+        field.setAttribute("list", listId);
+        // Attach datalist after field is in DOM.
+        requestAnimationFrame(() => {
+          if (field.parentElement && !field.parentElement.querySelector(`#${listId}`)) {
+            field.parentElement.append(datalist);
+          }
+        });
+      } else {
+        const select = document.createElement("select");
+        for (const opt of fieldDef.options) {
+          const o = document.createElement("option");
+          o.value = opt;
+          o.textContent = opt;
+          if (opt === value) o.selected = true;
+          select.append(o);
+        }
+        // Show current value even if not in options.
+        if (value && !fieldDef.options.includes(value)) {
+          const o = document.createElement("option");
+          o.value = value;
+          o.textContent = value;
+          o.selected = true;
+          select.append(o);
+        }
+        field = select;
       }
-      field = select;
+    } else if (fieldDef && fieldDef.type === "date") {
+      field = input({ type: "date", value: value.slice(0, 10) });
+    } else if (fieldDef && fieldDef.type === "number") {
+      field = input({ type: "number", value });
+      if (fieldDef.validation?.min != null) field.min = String(fieldDef.validation.min);
+      if (fieldDef.validation?.max != null) field.max = String(fieldDef.validation.max);
+    } else if (fieldDef && fieldDef.type === "yes-no") {
+      field = document.createElement("input");
+      field.type = "checkbox";
+      (field as HTMLInputElement).checked = value === "true" || value === "yes" || value === "1";
+      field.value = (field as HTMLInputElement).checked ? "yes" : "no";
     } else {
       field = input({ type: "text", value });
     }
