@@ -11,7 +11,7 @@
 // entry point for new binds. Manual paste is also supported. Edits
 // arrive from the Lookup tab; they're not added from here.
 
-import { FIELDS, type RegistryRow } from "../registry/schema";
+import { FIELDS, type RegistryRow, type FieldDef } from "../registry/schema";
 import { runPreflight, type QueueItem } from "../registry/preflight";
 import {
   appendBind,
@@ -24,6 +24,7 @@ import {
   type QueuedBind,
   type QueuedEdit,
 } from "../registry/queue";
+import { validateField, type ValidationError } from "../registry/validate";
 import type { AppContext, Tab } from "../core/types";
 import { el, button, input, formRow } from "../ui/dom";
 import { icon } from "../ui/icons";
@@ -425,21 +426,41 @@ function renderBindRow(
   for (const f of FIELDS.filter((f) => f.editable)) {
     const cell = el("td");
     const key = f.key as EditableKey;
-    const inp = input({ type: "text", value: (item as unknown as Record<string, string>)[key] ?? "" });
-    inp.addEventListener("change", () => {
+    const currentValue = (item as unknown as Record<string, string>)[key] ?? "";
+    const fieldInput = createFieldInput(f, currentValue);
+    const errEl = el("div", { class: "field-error small" });
+    errEl.style.display = "none";
+
+    const persistValue = (val: string) => {
       const queue = loadQueue();
       const current = queue[index];
       if (current && current.kind === "bind") {
-        (current as unknown as Record<string, string>)[key] = inp.value;
+        (current as unknown as Record<string, string>)[key] = val;
         saveQueue(queue);
         // #92: track last-edited fields for repeat mode
         if (repeatMode) {
           if (!lastBindFields) lastBindFields = {} as Record<EditableKey, string>;
-          lastBindFields[key] = inp.value;
+          lastBindFields[key] = val;
         }
       }
+    };
+
+    const runValidation = (val: string) => {
+      const errs = validateField(key, val, f);
+      showFieldErrors(errEl, fieldInput, errs);
+    };
+
+    fieldInput.addEventListener("change", () => {
+      const val = fieldInput instanceof HTMLSelectElement ? fieldInput.value : (fieldInput as HTMLInputElement).value;
+      persistValue(val);
+      runValidation(val);
     });
-    cell.append(inp);
+    fieldInput.addEventListener("blur", () => {
+      const val = fieldInput instanceof HTMLSelectElement ? fieldInput.value : (fieldInput as HTMLInputElement).value;
+      runValidation(val);
+    });
+
+    cell.append(fieldInput, errEl);
     tr.append(cell);
   }
 
@@ -567,4 +588,114 @@ function renderEntryRow(ctx: AppContext, onAdd: () => void): HTMLElement {
   addCell.append(addBlankBtn, " ", scanBtn);
   tr.append(addCell);
   return tr;
+}
+
+// ---------------------------------------------------------------------
+// Dynamic field input rendering (#112)
+// ---------------------------------------------------------------------
+
+/** Create an appropriate input element based on the field's contract type. */
+function createFieldInput(
+  fieldDef: FieldDef,
+  value: string,
+): HTMLInputElement | HTMLSelectElement {
+  switch (fieldDef.type) {
+    case "dropdown": {
+      if (fieldDef.on_unknown === "warn") {
+        // Allow free text with a datalist for suggestions.
+        const inp = input({ type: "text", value });
+        const listId = `dl-${fieldDef.key}-${Math.random().toString(36).slice(2, 8)}`;
+        const datalist = document.createElement("datalist");
+        datalist.id = listId;
+        for (const opt of fieldDef.options ?? []) {
+          const o = document.createElement("option");
+          o.value = opt;
+          datalist.append(o);
+        }
+        inp.setAttribute("list", listId);
+        inp.after(datalist);
+        // Append datalist to DOM via a wrapper trick -- caller appends inp to cell,
+        // so we attach the datalist as a sibling after inp is in the DOM.
+        requestAnimationFrame(() => {
+          if (inp.parentElement && !inp.parentElement.querySelector(`#${listId}`)) {
+            inp.parentElement.append(datalist);
+          }
+        });
+        return inp;
+      }
+      // Strict dropdown (on_unknown: "block" or no on_unknown).
+      const sel = document.createElement("select");
+      const emptyOpt = document.createElement("option");
+      emptyOpt.value = "";
+      emptyOpt.textContent = `-- ${fieldDef.label} --`;
+      sel.append(emptyOpt);
+      for (const opt of fieldDef.options ?? []) {
+        const o = document.createElement("option");
+        o.value = opt;
+        o.textContent = opt;
+        if (opt === value) o.selected = true;
+        sel.append(o);
+      }
+      if (value && !(fieldDef.options ?? []).includes(value)) {
+        // Current value not in options -- show it anyway.
+        const o = document.createElement("option");
+        o.value = value;
+        o.textContent = value;
+        o.selected = true;
+        sel.append(o);
+      }
+      return sel;
+    }
+    case "yes-no": {
+      const inp = document.createElement("input");
+      inp.type = "checkbox";
+      inp.checked = value === "true" || value === "yes" || value === "1";
+      // Sync the .value property so callers reading inp.value get a string.
+      inp.value = inp.checked ? "yes" : "no";
+      inp.addEventListener("change", () => {
+        inp.value = inp.checked ? "yes" : "no";
+      });
+      return inp;
+    }
+    case "date": {
+      return input({ type: "date", value: value.slice(0, 10) });
+    }
+    case "number": {
+      const inp = input({ type: "number", value });
+      if (fieldDef.validation?.min != null) inp.min = String(fieldDef.validation.min);
+      if (fieldDef.validation?.max != null) inp.max = String(fieldDef.validation.max);
+      return inp;
+    }
+    default: {
+      // "string" or fallback
+      const inp = input({ type: "text", value });
+      if (fieldDef.validation?.maxLength != null) {
+        inp.maxLength = fieldDef.validation.maxLength;
+      }
+      return inp;
+    }
+  }
+}
+
+/** Show/hide validation error messages below a field input. */
+function showFieldErrors(
+  errEl: HTMLElement,
+  fieldInput: HTMLInputElement | HTMLSelectElement,
+  errors: ValidationError[],
+): void {
+  if (errors.length === 0) {
+    errEl.style.display = "none";
+    errEl.textContent = "";
+    fieldInput.style.borderColor = "";
+    fieldInput.classList.remove("field--error", "field--warning");
+    return;
+  }
+  const hasError = errors.some((e) => e.severity === "error");
+  const color = hasError ? "var(--error, #d32f2f)" : "var(--warn, #ed6c02)";
+  fieldInput.style.borderColor = color;
+  fieldInput.classList.toggle("field--error", hasError);
+  fieldInput.classList.toggle("field--warning", !hasError);
+  errEl.style.display = "block";
+  errEl.style.color = color;
+  errEl.textContent = errors.map((e) => e.message).join("; ");
 }

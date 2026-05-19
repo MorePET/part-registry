@@ -5,9 +5,10 @@
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const contract = require('../../../../schema/registry-contract.json') as {
+  schema_version: number;
   id: { alphabet: string; canonicalLength: number; prefixLength: number; legacyCanonicalLength: number };
   statuses: string[];
-  fields: Array<{ key: string; label: string; editable: boolean; meaningfulFrom?: string }>;
+  fields: Array<{ key: string; label: string; type: string; editable: boolean; meaningfulFrom?: string; options?: string[]; on_unknown?: string; validation?: Record<string, unknown> }>;
 };
 
 export { contract };
