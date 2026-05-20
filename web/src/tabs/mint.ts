@@ -6,18 +6,13 @@
 //   B. "Mint for export" — generates IDs, then downloads CSV or copies
 //      to clipboard.
 //
-// Both flows can optionally submit IDs to the data repo registry via
-// the same PR pipeline used by the Bind tab.
+// As of #115/#117, minted IDs are added to the session store. They
+// immediately appear in the Lookup table (via merged view) and are
+// available for binding, printing, and eventual batch submit.
 
-import { ID_ALPHABET, ID_LENGTH, DATA_REPO_SLUG } from "../config";
+import { ID_ALPHABET, ID_LENGTH } from "../config";
 import type { AppContext, Tab } from "../core/types";
-import { appendBind, loadQueue } from "../registry/queue";
-import {
-  submitBatch,
-  promptForToken,
-  getStoredToken,
-  SubmitError,
-} from "../registry/submit";
+import { addMint, loadSession, summarizeSession } from "../registry/session";
 import { el, button, input, formRow, number as numberInput } from "../ui/dom";
 
 // ---- ID generation ----
@@ -156,7 +151,7 @@ function buildUI(ctx: AppContext): HTMLElement {
     el(
       "p",
       { class: "muted" },
-      "Generate new part IDs. Minted IDs start as \"unbound\" — bind them later to associate metadata.",
+      "Generate new part IDs. Minted IDs are added to your session and immediately available for binding and printing. Submit your session to commit them to the registry.",
     ),
   );
 
@@ -186,7 +181,16 @@ function buildUI(ctx: AppContext): HTMLElement {
   mintBtn.addEventListener("click", () => {
     const count = Math.min(Math.max(1, Number(countInput.value) || 1), 100);
     mintedIds = generateIds(count, ID_ALPHABET, ID_LENGTH);
-    renderResults();
+
+    // Add all minted IDs to the session store
+    const batch = batchInput.value;
+    const notes = notesInput.value;
+    void (async () => {
+      for (const id of mintedIds) {
+        await addMint(id, batch, notes);
+      }
+      renderResults();
+    })();
   });
 
   function renderResults(): void {
@@ -194,8 +198,20 @@ function buildUI(ctx: AppContext): HTMLElement {
     if (mintedIds.length === 0) return;
 
     resultsArea.append(
-      el("h3", {}, `${mintedIds.length} ID${mintedIds.length > 1 ? "s" : ""} generated`),
+      el("h3", {}, `${mintedIds.length} ID${mintedIds.length > 1 ? "s" : ""} minted`),
     );
+
+    // Session status
+    void loadSession().then((session) => {
+      const stats = summarizeSession(session);
+      const sessionInfo = el(
+        "p",
+        { class: "muted small" },
+        `Added to session (${stats.total} item${stats.total > 1 ? "s" : ""} total). ` +
+        `These IDs are now available in Lookup and ready for binding.`,
+      );
+      resultsArea.insertBefore(sessionInfo, resultsArea.firstChild?.nextSibling ?? null);
+    });
 
     const list = el("ul", { class: "mint__id-list" });
     for (const id of mintedIds) {
@@ -210,9 +226,8 @@ function buildUI(ctx: AppContext): HTMLElement {
     const addToPrintBtn = button({}, "Add to print plan");
     const downloadBtn = button({}, "Download CSV");
     const copyBtn = button({}, "Copy to clipboard");
-    const submitBtn = button({ class: "primary" }, "Submit to registry");
 
-    actions.append(addToPrintBtn, downloadBtn, copyBtn, submitBtn);
+    actions.append(addToPrintBtn, downloadBtn, copyBtn);
     resultsArea.append(actions, feedback);
 
     // -- Add to print plan --
@@ -252,71 +267,7 @@ function buildUI(ctx: AppContext): HTMLElement {
         feedback.className = "mint__feedback error";
       });
     });
-
-    // -- Submit to registry --
-    submitBtn.addEventListener("click", () => {
-      void submitToRegistry(mintedIds, batchInput.value, notesInput.value, feedback, submitBtn);
-    });
   }
 
   return root;
-}
-
-async function submitToRegistry(
-  ids: string[],
-  _batch: string,
-  notes: string,
-  feedback: HTMLElement,
-  submitBtn: HTMLButtonElement,
-): Promise<void> {
-  let token = getStoredToken();
-  if (!token) {
-    token = promptForToken();
-    if (!token) {
-      feedback.textContent = "Submit cancelled — no token provided.";
-      feedback.className = "mint__feedback warn";
-      return;
-    }
-  }
-
-  // Queue all IDs as unbound binds — the submit pipeline expects
-  // QueueItem[]. We add them to the shared queue, submit, then remove
-  // the ones we added.
-  for (const id of ids) {
-    appendBind({
-      id,
-      type: "",
-      description: "",
-      vendor: "",
-      part_number: "",
-      location: "",
-      notes,
-    });
-  }
-
-  const queue = loadQueue();
-  // Filter to just the items we added (by id set).
-  const idSet = new Set(ids);
-  const toSubmit = queue.filter((q) => idSet.has(q.id));
-
-  submitBtn.disabled = true;
-  feedback.textContent = "Submitting...";
-  feedback.className = "mint__feedback muted";
-
-  try {
-    const result = await submitBatch(toSubmit, token, DATA_REPO_SLUG);
-    feedback.innerHTML = "";
-    feedback.className = "mint__feedback";
-    const link = el("a", { href: result.prUrl, target: "_blank", rel: "noopener" }, `PR #${result.prNumber}`);
-    feedback.append("Submitted! ", link);
-  } catch (e) {
-    const msg =
-      e instanceof SubmitError
-        ? `Submit failed at step "${e.step}": ${e.message}`
-        : `Submit failed: ${(e as Error).message}`;
-    feedback.textContent = msg;
-    feedback.className = "mint__feedback error";
-  } finally {
-    submitBtn.disabled = false;
-  }
 }
