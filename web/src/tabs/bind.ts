@@ -15,11 +15,9 @@ import { FIELDS, type RegistryRow, type FieldDef } from "../registry/schema";
 import { runPreflight, type QueueItem } from "../registry/preflight";
 import {
   appendBind,
-  clearQueue,
   loadQueue,
   removeAt,
   saveQueue,
-  summarizeQueue,
   type EditableKey,
   type QueuedBind,
   type QueuedEdit,
@@ -36,12 +34,13 @@ import {
 } from "../ui/scanner";
 import type { Action, AuthDecision } from "../wasm/loader";
 import {
-  submitBatch,
+  submitSession,
   promptForToken,
   getStoredToken,
   clearToken,
   SubmitError,
 } from "../registry/submit";
+import { loadSession, clearSession, summarizeSession, removeItemAt as sessionRemoveAt, type SessionMint } from "../registry/session";
 import { DATA_REPO_SLUG } from "../config";
 
 function emptyBindFields(): Pick<
@@ -77,19 +76,19 @@ export const bindTab: Tab = {
 
 function buildUI(ctx: AppContext): HTMLElement {
   const root = el("div", { class: "tab tab--bind" });
-  root.append(el("h2", {}, "Bind / edit queue"));
+  root.append(el("h2", {}, "Session queue"));
   root.append(
     el(
       "p",
       { class: "muted small" },
-      "Click \"+\u00a0Add row\" to queue a new bind (or scan QR codes). " +
-        "Edits arrive from the Lookup tab. " +
-        "Submit creates a PR against the data repo.",
+      "All pending operations (mints, binds, edits, voids) are shown here. " +
+        "Add binds via \"+\u00a0Add row\" or scan QR codes. Edits and voids arrive from the Lookup tab. " +
+        "Mints arrive from the Mint tab. Submit creates a single PR with all changes.",
     ),
   );
 
-  const submitBtn = button({ class: "primary" }, icon("plus"), " Submit batch");
-  const clearBtn = button({ class: "destructive" }, icon("trash"), " Clear queue");
+  const submitBtn = button({ class: "primary" }, icon("plus"), " Submit session");
+  const clearBtn = button({ class: "destructive" }, icon("trash"), " Clear session");
   const summaryEl = el("span", { class: "queue-summary muted small" });
 
   // ADR-016 §"FE preflight" + issue #23: every queue mutation re-runs
@@ -143,11 +142,14 @@ function buildUI(ctx: AppContext): HTMLElement {
     const queue = loadQueue();
     refreshPreflight(queue);
 
-    const summary = summarizeQueue(queue);
-    summaryEl.textContent =
-      queue.length === 0
-        ? ""
-        : `${summary.total} item(s): ${summary.binds} bind, ${summary.edits} edit`;
+    // Show full session summary (including mints)
+    void loadSession().then((sess) => {
+      const stats = summarizeSession(sess);
+      summaryEl.textContent =
+        sess.items.length === 0
+          ? ""
+          : `${stats.total} item(s): ${stats.label}`;
+    });
 
     const table = el("table", { class: "data bind-queue" });
     const thead = el("thead");
@@ -164,6 +166,17 @@ function buildUI(ctx: AppContext): HTMLElement {
 
     const tbody = el("tbody");
 
+    // Render mint items from the session (read-only, shown at the top)
+    void loadSession().then((sess) => {
+      const mintItems = sess.items.filter((i) => i.kind === "mint");
+      for (let i = 0; i < mintItems.length; i++) {
+        const mint = mintItems[i];
+        // Find the actual index in session.items for removal
+        const sessionIdx = sess.items.indexOf(mint);
+        tbody.insertBefore(renderMintRow(mint as SessionMint, sessionIdx, renderTable), tbody.firstChild);
+      }
+    });
+
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
       if (item.kind === "bind") {
@@ -179,19 +192,21 @@ function buildUI(ctx: AppContext): HTMLElement {
     table.append(tbody);
     tableContainer.append(table);
 
-    if (queue.length === 0) {
-      tableContainer.append(
-        el("p", { class: "muted small" }, "Queue is empty. Add a bind below, or queue an edit from the Lookup tab."),
-      );
-    }
+    void loadSession().then((sess) => {
+      if (sess.items.length === 0) {
+        tableContainer.append(
+          el("p", { class: "muted small" }, "Session is empty. Mint IDs, add binds below, or queue edits from the Lookup tab."),
+        );
+      }
+    });
   };
 
   renderTable();
 
   submitBtn.addEventListener("click", async () => {
-    const q = loadQueue();
-    if (q.length === 0) {
-      alert("Queue is empty.");
+    const session = await loadSession();
+    if (session.items.length === 0) {
+      alert("Session is empty.");
       return;
     }
 
@@ -202,11 +217,10 @@ function buildUI(ctx: AppContext): HTMLElement {
       if (!token) return; // cancelled
     }
 
-    const summary = summarizeQueue(q);
+    const stats = summarizeSession(session);
     if (
       !confirm(
-        `Submit ${summary.total} item(s) (${summary.binds} bind, ${summary.edits} edit) ` +
-          `as a PR to ${DATA_REPO_SLUG}?`,
+        `Submit session (${stats.label}) as a PR to ${DATA_REPO_SLUG}?`,
       )
     ) {
       return;
@@ -216,8 +230,8 @@ function buildUI(ctx: AppContext): HTMLElement {
     submitBtn.textContent = "Submitting\u2026";
 
     try {
-      const result = await submitBatch(q, token, DATA_REPO_SLUG);
-      clearQueue();
+      const result = await submitSession(session, token, DATA_REPO_SLUG);
+      await clearSession();
       renderTable();
       alert(`PR #${result.prNumber} created.\n\n${result.prUrl}`);
     } catch (e) {
@@ -237,15 +251,16 @@ function buildUI(ctx: AppContext): HTMLElement {
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = "";
-      submitBtn.append(icon("plus"), " Submit batch");
+      submitBtn.append(icon("plus"), " Submit session");
     }
   });
 
   clearBtn.addEventListener("click", () => {
-    if (loadQueue().length === 0) return;
-    if (!confirm("Clear the bind queue without submitting?")) return;
-    clearQueue();
-    renderTable();
+    void loadSession().then((sess) => {
+      if (sess.items.length === 0) return;
+      if (!confirm("Clear the entire session without submitting? This will discard all pending mints, binds, edits, and voids.")) return;
+      void clearSession().then(() => renderTable());
+    });
   });
 
   // ---- Batch scan buttons (image upload #99, rolling scan #100) ----
@@ -397,6 +412,47 @@ function decisionLabel(d: AuthDecision): string {
     case "block":
       return "Blocked";
   }
+}
+
+function renderMintRow(
+  item: SessionMint,
+  sessionIndex: number,
+  onChange: () => void,
+): HTMLElement {
+  const tr = el("tr", { class: "queue-row queue-row--mint", "data-kind": "mint", "data-id": item.id });
+  tr.append(el("td", {}, el("span", { class: "chip chip--kind chip--mint" }, "mint")));
+
+  // ID cell (read-only)
+  tr.append(el("td", { class: "id-cell" }, fmtId(item.id)));
+
+  // Editable field cells — mints don't have bind metadata, show dashes
+  for (const f of FIELDS.filter((f) => f.editable)) {
+    const cell = el("td");
+    if (f.key === "notes" && item.notes) {
+      cell.append(item.notes);
+    } else {
+      cell.append(el("span", { class: "muted" }, "\u2014"));
+    }
+    tr.append(cell);
+  }
+
+  // Queued-at timestamp
+  tr.append(
+    el(
+      "td",
+      { class: "muted small" },
+      new Date(item.createdAt).toLocaleString(),
+    ),
+  );
+
+  // Remove button
+  const trashBtn = button({ class: "icon-only", title: "Remove from session" }, icon("trash"));
+  trashBtn.addEventListener("click", () => {
+    void sessionRemoveAt(sessionIndex).then(() => onChange());
+  });
+  tr.append(el("td", { class: "row-actions" }, trashBtn));
+
+  return tr;
 }
 
 function renderBindRow(

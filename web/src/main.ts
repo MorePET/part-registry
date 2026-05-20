@@ -17,7 +17,13 @@ import { PLUGINS } from "./plugins";
 import { buildPartPath, parseAppPath, type AppPath } from "./routing/route";
 import { el, button } from "./ui/dom";
 import { loadWasm } from "./wasm/loader";
-import { loadQueue } from "./registry/queue";
+import {
+  loadSession,
+  getSessionSync,
+  migrateOldQueue,
+  clearSession,
+  summarizeSession,
+} from "./registry/session";
 import { loadPlan } from "./tabs/print";
 import {
   events,
@@ -29,11 +35,30 @@ async function main(): Promise<void> {
   const root = document.getElementById("app");
   if (!root) throw new Error("missing #app");
 
-  // Initialise the Rust WASM façade up front so layouts can stay
+  // Initialise the Rust WASM facade up front so layouts can stay
   // synchronous in their `renderSvg` interface (ADR-017 strangler-fig
   // step 8; foundation issue #33). The bundle is ~330 KB raw / ~128 KB
   // gzipped — within the 1.5 MB ceiling so blocking on boot is fine.
   await loadWasm();
+
+  // ---- Session store init (#115, #117) ----
+  // Load (or create) the session and migrate any old localStorage queue.
+  const migrated = await migrateOldQueue();
+  const session = await loadSession();
+  if (migrated > 0) {
+    console.info(`[session] Migrated ${migrated} item(s) from old bind queue.`);
+  }
+
+  // ---- Crash recovery (#117) ----
+  // If the session has items from a previous page load, offer recovery.
+  if (session.items.length > 0) {
+    const stats = summarizeSession(session);
+    const startedAt = new Date(session.createdAt).toLocaleString();
+    const recovered = await showRecoveryDialog(stats, startedAt);
+    if (!recovered) {
+      await clearSession();
+    }
+  }
 
   const registry = createRegistry();
 
@@ -64,7 +89,7 @@ async function main(): Promise<void> {
 
   installPlugins(layout.toolbar, ctx, PLUGINS);
 
-  layout.statusBar.textContent = "Loading registry…";
+  layout.statusBar.textContent = "Loading registry\u2026";
   try {
     await registry.load();
     layout.statusBar.textContent = `${registry.all().length} parts loaded.`;
@@ -104,25 +129,31 @@ async function main(): Promise<void> {
     tabList.append(li);
   }
 
+  // ---- Session indicator (#115) ----
+  const sessionIndicator = el("div", { class: "session-indicator" });
+  layout.main.insertBefore(sessionIndicator, tabBar.nextSibling);
+
   // Issue #97: badge counts on Bind and Print tab buttons + queue warning banner.
   const queueWarning = el("div", { class: "queue-warning" });
-  layout.main.insertBefore(queueWarning, tabBar.nextSibling);
+  layout.main.insertBefore(queueWarning, sessionIndicator.nextSibling);
 
   const updateBadges = () => {
-    // Bind tab badge
+    // Bind tab badge — uses session item count (bind + edit + void)
     const bindEntry = tabEntries.get("bind");
     if (bindEntry) {
-      const queue = loadQueue();
-      let badge = bindEntry.btn.querySelector(".tab-badge");
-      if (queue.length > 0) {
-        if (!badge) {
-          badge = el("span", { class: "tab-badge" });
-          bindEntry.btn.append(badge);
+      void loadSession().then((sess) => {
+        const nonMintCount = sess.items.filter((i) => i.kind !== "mint").length;
+        let badge = bindEntry.btn.querySelector(".tab-badge");
+        if (nonMintCount > 0) {
+          if (!badge) {
+            badge = el("span", { class: "tab-badge" });
+            bindEntry.btn.append(badge);
+          }
+          badge.textContent = String(nonMintCount);
+        } else {
+          badge?.remove();
         }
-        badge.textContent = String(queue.length);
-      } else {
-        badge?.remove();
-      }
+      });
     }
 
     // Print tab badge
@@ -141,28 +172,61 @@ async function main(): Promise<void> {
       }
     }
 
+    // Session indicator
+    void loadSession().then((sess) => {
+      sessionIndicator.innerHTML = "";
+      if (sess.items.length === 0) {
+        sessionIndicator.style.display = "none";
+        return;
+      }
+      sessionIndicator.style.display = "";
+
+      const stats = summarizeSession(sess);
+      const indicatorText = el(
+        "span",
+        { class: "session-indicator__text" },
+        `${stats.total} uncommitted change${stats.total > 1 ? "s" : ""}`,
+      );
+      const detailText = el(
+        "span",
+        { class: "session-indicator__detail muted small" },
+        ` (${stats.label})`,
+      );
+      indicatorText.append(detailText);
+
+      const submitHint = el(
+        "span",
+        { class: "session-indicator__hint muted small" },
+        " — go to Bind tab to submit or clear",
+      );
+
+      sessionIndicator.append(indicatorText, submitHint);
+      sessionIndicator.style.cursor = "pointer";
+      sessionIndicator.onclick = () => void showTabWithBadges("bind");
+    });
+
     // Queue staleness warning
     queueWarning.innerHTML = "";
-    const queue = loadQueue();
-    if (queue.length > 0) {
+    void loadSession().then((sess) => {
+      if (sess.items.length === 0) return;
       const oneHourAgo = Date.now() - 60 * 60 * 1000;
-      const stale = queue.filter((q) => {
-        const ts = new Date(q.queued_at).getTime();
+      const stale = sess.items.filter((i) => {
+        const ts = new Date(i.createdAt).getTime();
         return ts > 0 && ts < oneHourAgo;
       });
       if (stale.length > 0) {
         const oldest = new Date(
-          Math.min(...stale.map((q) => new Date(q.queued_at).getTime())),
+          Math.min(...stale.map((i) => new Date(i.createdAt).getTime())),
         );
         queueWarning.append(
           el(
             "div",
             { class: "queue-warning__banner" },
-            `${stale.length} unsubmitted bind(s) from ${oldest.toLocaleString()}`,
+            `${stale.length} unsubmitted item(s) from ${oldest.toLocaleString()}`,
           ),
         );
       }
-    }
+    });
   };
 
   // Update on tab switch
@@ -184,6 +248,17 @@ async function main(): Promise<void> {
   // Initial badge render
   updateBadges();
 
+  // ---- beforeunload guard (#117) ----
+  window.addEventListener("beforeunload", (e) => {
+    // Synchronous check from the in-memory cache — beforeunload
+    // must be synchronous to trigger the browser's leave-page dialog.
+    const sess = getSessionSync();
+    if (sess && sess.items.length > 0) {
+      e.preventDefault();
+      e.returnValue = "You have unsubmitted changes.";
+    }
+  });
+
   window.addEventListener("popstate", () => {
     route = parseAppPath(window.location.pathname);
     syncCanonicalPath(route);
@@ -192,6 +267,46 @@ async function main(): Promise<void> {
   });
 
   if (activeTabId) await showTabWithBadges(activeTabId);
+}
+
+/**
+ * Show crash recovery dialog (#117). Returns true if user chose to
+ * resume, false if they chose to discard.
+ */
+function showRecoveryDialog(
+  stats: { total: number; label: string },
+  startedAt: string,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = el("div", { class: "recovery-overlay" });
+    const dialog = el("div", { class: "recovery-dialog" });
+
+    dialog.append(
+      el("h2", {}, "Session recovered"),
+      el(
+        "p",
+        {},
+        `Recovered ${stats.total} item${stats.total > 1 ? "s" : ""} from a previous session (started ${startedAt}).`,
+      ),
+      el("p", { class: "muted" }, `Contents: ${stats.label}`),
+    );
+
+    const resumeBtn = button({ class: "primary" }, "Resume session");
+    const discardBtn = button({ class: "destructive" }, "Discard");
+
+    resumeBtn.addEventListener("click", () => {
+      overlay.remove();
+      resolve(true);
+    });
+    discardBtn.addEventListener("click", () => {
+      overlay.remove();
+      resolve(false);
+    });
+
+    dialog.append(el("div", { class: "recovery-dialog__actions" }, resumeBtn, discardBtn));
+    overlay.append(dialog);
+    document.body.append(overlay);
+  });
 }
 
 function syncCanonicalPath(route: AppPath): void {

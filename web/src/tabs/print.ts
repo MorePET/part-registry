@@ -43,6 +43,8 @@ import {
 import { icon } from "../ui/icons";
 import { openScanner } from "../ui/scanner";
 import { isWasmReady } from "../wasm/loader";
+import { loadSession } from "../registry/session";
+import { uncommittedPrintIds } from "../registry/session-registry";
 
 export interface JobItem {
   id: string;
@@ -329,6 +331,30 @@ function buildUI(ctx: AppContext): HTMLElement {
     refreshPlanSummary();
   });
 
+  // #117: warning when print plan references unsubmitted session IDs
+  const printWarning = el("div", { class: "print-warning" });
+  printWarning.style.display = "none";
+
+  const refreshPrintWarning = () => {
+    printWarning.style.display = "none";
+    printWarning.innerHTML = "";
+    const plan = loadPlan();
+    if (plan.length === 0) return;
+    const planIds = plan.map((p) => p.id);
+    void loadSession().then((session) => {
+      const uncommitted = uncommittedPrintIds(
+        planIds,
+        ctx.registry.all(),
+        session,
+      );
+      if (uncommitted.length > 0) {
+        printWarning.style.display = "";
+        printWarning.textContent =
+          `${uncommitted.length} label${uncommitted.length > 1 ? "s" : ""} reference${uncommitted.length === 1 ? "s" : ""} unsubmitted IDs. Submit your session first.`;
+      }
+    });
+  };
+
   const renderPlan = () => {
     const plan = loadPlan();
     summary.textContent = planSummary(plan);
@@ -339,6 +365,7 @@ function buildUI(ctx: AppContext): HTMLElement {
     }));
     refreshPlanSummary();
     refreshLivePreview();
+    refreshPrintWarning();
   };
   renderPlan();
   renderModeOpts();
@@ -506,6 +533,7 @@ function buildUI(ctx: AppContext): HTMLElement {
     summary,
     tableWrap,
     livePreviewArea,
+    printWarning,
     el("h3", {}, "Paper format"),
     formRow([el("label", {}, "Output"), modeSel]),
     modeOptsArea,

@@ -732,3 +732,69 @@ table.data .actions { display: flex; gap: 4px; justify-content: flex-end; }
 .empty-state__hint {
   margin: 0 0 16px;
 }
+
+/* ---- Session indicator (#115) ---- */
+.session-indicator {
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: var(--pico-card-background-color, #f8f9fa);
+  border-left: 3px solid var(--pico-primary, #1095c1);
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.session-indicator__detail {
+  margin-left: 4px;
+}
+.session-indicator__hint {
+  margin-left: 4px;
+}
+
+/* ---- Recovery dialog (#117) ---- */
+.recovery-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.recovery-dialog {
+  background: var(--pico-card-background-color, #fff);
+  color: var(--pico-color, #333);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 480px;
+  width: 90vw;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+}
+.recovery-dialog h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+.recovery-dialog__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+/* ---- Pending row indicator (#115) ---- */
+.queue-row--mint {
+  font-style: italic;
+  opacity: 0.85;
+}
+.chip--mint {
+  background: var(--pico-primary, #1095c1);
+  color: #fff;
+}
+
+/* ---- Print tab unsubmitted warning (#117) ---- */
+.print-warning {
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: #fff3cd;
+  border-left: 3px solid #ffc107;
+  color: #856404;
+  margin-bottom: 12px;
+  font-size: 13px;
+}

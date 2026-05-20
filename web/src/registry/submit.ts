@@ -17,6 +17,8 @@
 // success/failure feedback and clears the queue on success.
 
 import type { QueuedBind, QueuedEdit, QueueItem } from "./queue";
+import type { Session } from "./session";
+import { sessionToSubmitPayload, applyMints, buildSessionCommitMessage } from "./session-submit";
 
 export interface SubmitResult {
   prUrl: string;
@@ -340,6 +342,139 @@ export async function submitBatch(
     `**IDs:** ${ids}${queue.length > 10 ? ` (+${queue.length - 10} more)` : ""}\n\n` +
     `_Automated PR — CI will validate._`;
 
+  const prRes = await ghFetch(`${apiBase}/pulls`, token, {
+    method: "POST",
+    body: JSON.stringify({
+      title: commitMessage,
+      head: branchName,
+      base: "main",
+      body: prBody,
+    }),
+  });
+  if (!prRes.ok) {
+    const body = await prRes.text();
+    throw new SubmitError(
+      `Failed to create PR: ${prRes.status} ${body}`,
+      "create-pr",
+      prRes.status,
+    );
+  }
+  const prData = (await prRes.json()) as {
+    html_url: string;
+    number: number;
+  };
+  return { prUrl: prData.html_url, prNumber: prData.number };
+}
+
+// ---- Session-based submit (#115, #117) ----
+
+/**
+ * Submit an entire session as a single PR. Handles mints (new rows),
+ * binds, edits, and voids in one commit.
+ */
+export async function submitSession(
+  session: Session,
+  token: string,
+  dataRepoSlug: string,
+): Promise<SubmitResult> {
+  const apiBase = `https://api.github.com/repos/${dataRepoSlug}`;
+  const { queueItems, mintRows, summary } = sessionToSubmitPayload(session);
+
+  if (queueItems.length === 0 && mintRows.length === 0) {
+    throw new SubmitError("Session is empty — nothing to submit.", "validate");
+  }
+
+  // 1. Fetch current registry.csv from main.
+  const fileRes = await ghFetch(
+    `${apiBase}/contents/registry.csv?ref=main`,
+    token,
+  );
+  if (!fileRes.ok) {
+    const body = await fileRes.text();
+    throw new SubmitError(
+      `Failed to read registry.csv: ${fileRes.status} ${body}`,
+      "read-csv",
+      fileRes.status,
+    );
+  }
+  const fileData = (await fileRes.json()) as {
+    sha: string;
+    content: string;
+    encoding: string;
+  };
+  const csvBytes = Uint8Array.from(
+    atob(fileData.content.replace(/\n/g, "")),
+    (c) => c.charCodeAt(0),
+  );
+  let csvText = new TextDecoder().decode(csvBytes);
+
+  // 2. Apply mints first (add new rows), then queue edits.
+  csvText = applyMints(csvText, mintRows);
+  if (queueItems.length > 0) {
+    csvText = applyQueue(csvText, queueItems);
+  }
+
+  // 3. Get the SHA of main's HEAD.
+  const mainRefRes = await ghFetch(`${apiBase}/git/ref/heads/main`, token);
+  if (!mainRefRes.ok) {
+    throw new SubmitError(
+      `Failed to read main ref: ${mainRefRes.status}`,
+      "read-main-ref",
+      mainRefRes.status,
+    );
+  }
+  const mainRef = (await mainRefRes.json()) as {
+    object: { sha: string };
+  };
+  const baseSha = mainRef.object.sha;
+
+  // 4. Create branch.
+  const ts = Date.now();
+  const branchName = `registry-proposal/${ts}`;
+  const createRefRes = await ghFetch(`${apiBase}/git/refs`, token, {
+    method: "POST",
+    body: JSON.stringify({
+      ref: `refs/heads/${branchName}`,
+      sha: baseSha,
+    }),
+  });
+  if (!createRefRes.ok) {
+    const body = await createRefRes.text();
+    throw new SubmitError(
+      `Failed to create branch: ${createRefRes.status} ${body}`,
+      "create-branch",
+      createRefRes.status,
+    );
+  }
+
+  // 5. Commit.
+  const { commitMessage, prBody } = buildSessionCommitMessage(session);
+  const encoded = btoa(
+    String.fromCharCode(...new TextEncoder().encode(csvText)),
+  );
+  const putRes = await ghFetch(
+    `${apiBase}/contents/registry.csv`,
+    token,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        message: commitMessage,
+        content: encoded,
+        sha: fileData.sha,
+        branch: branchName,
+      }),
+    },
+  );
+  if (!putRes.ok) {
+    const body = await putRes.text();
+    throw new SubmitError(
+      `Failed to commit CSV: ${putRes.status} ${body}`,
+      "commit-csv",
+      putRes.status,
+    );
+  }
+
+  // 6. Create PR.
   const prRes = await ghFetch(`${apiBase}/pulls`, token, {
     method: "POST",
     body: JSON.stringify({
