@@ -45,7 +45,11 @@ fn main() {
 
     // Multi QR scattered (random positions + rotations)
     let positions: [(i32, i32, i32); 5] = [
-        (40, 30, -5), (320, 60, 8), (150, 250, -3), (400, 300, 12), (50, 380, -8),
+        (40, 30, -5),
+        (320, 60, 8),
+        (150, 250, -3),
+        (400, 300, 12),
+        (50, 380, -8),
     ];
     let mut scattered = String::from(
         r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 550" width="650" height="550">
