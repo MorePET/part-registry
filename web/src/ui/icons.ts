@@ -27,6 +27,7 @@ import {
   Upload,
   ListChecks,
   Check,
+  Settings,
   type IconNode,
 } from "lucide";
 
@@ -48,6 +49,7 @@ const ICONS: Record<string, IconNode> = {
   upload: Upload,
   "list-checks": ListChecks,
   check: Check,
+  settings: Settings,
 };
 
 export type IconName = keyof typeof ICONS;

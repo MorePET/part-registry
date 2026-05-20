@@ -16,6 +16,7 @@ import { TABS } from "./tabs";
 import { PLUGINS } from "./plugins";
 import { buildPartPath, parseAppPath, type AppPath } from "./routing/route";
 import { el, button } from "./ui/dom";
+import { icon } from "./ui/icons";
 import { loadWasm } from "./wasm/loader";
 import {
   loadSession,
@@ -354,7 +355,7 @@ function renderLayout() {
 
   // Settings gear (placeholder for future settings panel)
   const settingsBtn = button({ class: "toolbar-btn icon-only", title: "Settings" });
-  settingsBtn.innerHTML = '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="3"/><path d="M10 1v2m0 14v2m-6.36-3.64l1.42-1.42m9.9-9.9l1.42-1.42M1 10h2m14 0h2m-3.64 6.36l-1.42-1.42M4.04 4.04L2.62 2.62"/></svg>';
+  settingsBtn.append(icon("settings"));
   settingsBtn.addEventListener("click", () => {
     alert("Settings panel coming soon.");
   });
