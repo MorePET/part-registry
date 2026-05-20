@@ -32,12 +32,16 @@ function makeLocalStorage() {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal("localStorage", makeLocalStorage());
   // Initialize the session store's in-memory cache so the synchronous
   // queue API works without IndexedDB (not available in jsdom/Node).
-  (session as any)._initCacheForTest?.() ??
-    ((session as any)._cache = { id: "test", createdAt: new Date().toISOString(), items: [] });
+  try {
+    await session.loadSession();
+  } catch {
+    // IndexedDB not available — session falls back to localStorage
+  }
+  await session.clearSession();
 });
 
 afterEach(() => {
