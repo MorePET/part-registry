@@ -100,31 +100,20 @@
           };
         };
 
-        # Workspace builds with the same pinned toolchain the dev shell uses.
-        rustPlatformPinned = pkgs.makeRustPlatform {
-          cargo = rustToolchain;
-          rustc = rustToolchain;
-        };
-
         # The obligations gate binary (crates/devtools — Rust port of the
-        # retired tools/obligations_check.py, ADR-017 step 9). Built from the
-        # checked-in Cargo.lock so the derivation is hermetic; the vendor step
-        # fetches the whole workspace lock once and is cached thereafter.
-        devtools = rustPlatformPinned.buildRustPackage {
+        # retired tools/obligations_check.py, ADR-017 step 9). Built with
+        # crane like the rest of the workspace, reusing the shared
+        # cargoArtifacts vendor. (Previously nixpkgs importCargoLock, whose
+        # default download URL — crates.io's API endpoint — now 403s at
+        # our pin; rust-lang/crates.io#13482. crane fetches from
+        # static.crates.io and handles the qrcode2 git pin from the lock.)
+        devtools = craneLib.buildPackage (commonArgs // {
+          inherit cargoArtifacts;
           pname = "qx-devtools";
           version = "0.1.0";
-          src = ./.;
-          cargoLock = {
-            lockFile = ./Cargo.lock;
-            # qrcode2 is git-pinned to our Annex-J fork (issue #211); the
-            # cargoLock vendorer needs the FOD hash for the git source.
-            outputHashes = {
-              "qrcode2-0.18.0" = "sha256-5kRNtF9lK0DbUc1zpCSObWj+YWRAHm5AGq+ZJmAwpLw=";
-            };
-          };
-          buildAndTestSubdir = "crates/devtools";
+          cargoExtraArgs = "-p qx-devtools";
           doCheck = false;
-        };
+        });
 
         # crane wired to the pinned rust-toolchain — overrideToolchain
         # ensures the cargo/rustc used by every crane derivation matches
